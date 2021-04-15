@@ -6,15 +6,15 @@ import org.jetbrains.kotlin.gradle.tasks.KotlinCompile
 object Variables {
     val starsectorDirectory = "C:/Program Files (x86)/Fractal Softworks/Starsector"
     val modVersion = "1.0.0"
-    val jarFileName = "My_Mod.jar"
+    val jarFileName = "Trophy-Fleet.jar"
 
-    val modId = "yourName_uniqueid"
-    val modName = "My Mod"
-    val author = "Your Name"
+    val modId = "wisp_trophy-fleet"
+    val modName = "Trophy Fleet"
+    val author = "Wisp"
     val description = "Mod description."
     val gameVersion = "0.95a-RC12"
     val jars = arrayOf("jars/$jarFileName")
-    val modPlugin = "com.example.template.LifecyclePlugin"
+    val modPlugin = "org.wisp.trophyplanet.LifecyclePlugin"
     val isUtilityMod = false
     val masterVersionFile = "https://raw.githubusercontent.com/githubname/githubrepo/master/$modId.version"
     val modThreadId = "00000"
@@ -40,6 +40,8 @@ repositories {
 
 dependencies {
     val kotlinVersionInLazyLib = "1.4.21"
+
+    implementation(fileTree("libs") { include("*.jar") })
 
     // Get kotlin sdk from LazyLib during runtime, only use it here during compile time
     compileOnly("org.jetbrains.kotlin:kotlin-stdlib:$kotlinVersionInLazyLib")
