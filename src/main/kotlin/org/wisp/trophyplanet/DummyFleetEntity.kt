@@ -7,7 +7,7 @@ import com.fs.starfarer.api.graphics.SpriteAPI
 import com.fs.starfarer.api.impl.campaign.BaseCustomEntityPlugin
 
 class DummyFleetEntity : BaseCustomEntityPlugin() {
-    var scale = 0.5f
+    var spriteScale: Float = 1f
 
     @Transient
     private var sprites = mutableListOf<SpriteAPI>()
@@ -21,8 +21,8 @@ class DummyFleetEntity : BaseCustomEntityPlugin() {
     }
 
     fun addSprite(sprite: SpriteAPI) {
-        sprite.width = sprite.width * scale
-        sprite.height = sprite.height * scale
+        sprite.width = sprite.width * spriteScale
+        sprite.height = sprite.height * spriteScale
         sprites.add(sprite)
     }
 

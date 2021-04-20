@@ -4,11 +4,20 @@ import org.lazywizard.lazylib.MathUtils
 import org.lwjgl.util.Rectangle
 import org.lwjgl.util.vector.Vector2f
 import kotlin.math.sqrt
+import kotlin.random.Random
 
+/**
+ * https://github.com/snorpey/circlepacker/blob/master/src/PackedCircleManager.js
+ *
+ * @param bounds Set the boundary rectangle for the circle packing.
+ * This is used to locate the 'center'
+ * https://github.com/snorpey/circlepacker/blob/master/src/PackedCircleManager.js#L30
+ */
 class PackedCircleManager(
-    val circles: MutableList<PackedCircle> = mutableListOf(),
+    val circles: MutableMap<String, PackedCircle> = mutableMapOf(),
     val pinnedCircleIds: MutableList<Int> = mutableListOf(),
-    var desiredTarget: Vector2f = Vector2f()
+    var bounds: Rectangle?,
+    var desiredTarget: Vector2f?
 ) {
     companion object {
         const val damping: Float = 0.025f
@@ -31,56 +40,60 @@ class PackedCircleManager(
         set(value) {
             // Setting to null, and we had a circle before.
             // Restore the radius of the circle as it was previously
-            if (draggedCircle != null && draggedCircle != value) {
-                draggedCircle!!.radius = draggedCircle!!.originalRadius
+            if (field != null && field != value) {
+                field!!.radius = field!!.originalRadius
             }
 
             field = value
         }
 
-    /**
-     * Set the boundary rectangle for the circle packing.
-     * This is used to locate the 'center'
-     * https://github.com/snorpey/circlepacker/blob/master/src/PackedCircleManager.js#L30
-     */
-    var bounds: Rectangle = Rectangle(0, 0, 0, 0)
-
     fun addCircle(circle: PackedCircle) {
-        circles += circle
-        circle.targetPosition = this.desiredTarget.copy()
+        circles += circle.id to circle
+//        circle.targetPosition = this.desiredTarget.copy()
     }
 
     fun removeCircle(circleId: String) {
-        circles.removeIf { it.id == circleId }
+        circles.remove(circleId)
     }
 
     fun updatePositions() {
         // Choosing not to copy anything, we'll see what happens
-//        val previousPositions = circles.map { PackedCircle }
-//
-        if (this.desiredTarget != null && this.isCenterPullActive) {
-            this.pushAllCirclesTowardTarget(desiredTarget)
+//        val previousPositions = circles.values.forEach {
+//            it.previousPosition = it.position.copy()
+//        }
+
+        val desiredTargetInner = this.desiredTarget
+
+        if (desiredTargetInner != null && this.isCenterPullActive) {
+            this.pushAllCirclesTowardTarget(desiredTargetInner)
         }
 
         this.handleCollisions()
 
-        this.circles.forEach { this.handleBoundaryForCircle(it) }
+        if (bounds != null) {
+            this.circles.values
+                .filter { !it.isPinned }
+                .forEach { this.handleBoundaryForCircle(it, bounds!!) }
+        }
+
+        this.circles.values.forEach {
+            it.syncedEntity?.location?.x = it.position.x
+            it.syncedEntity?.location?.y = it.position.y
+        }
     }
 
     fun pushAllCirclesTowardTarget(target: Vector2f) {
         val point = Vector2f()
 
-
         for (n in (0 until PackedCircleManager.numberOfCenteringPasses)) {
-            circles.forEach { circle ->
+            for (circle in circles.values) {
                 if (circle.isPulledToCenter) {
                     // Kinematic circles can't be pushed around.
                     val isCircleKinematic =
-                        circle == draggedCircle
-                                || circle.isPinned
+                        circle == draggedCircle || circle.isPinned
 
                     if (isCircleKinematic)
-                        return@forEach
+                        continue
 
                     point.x = circle.position.x - target.x
                     point.y = circle.position.y - target.y
@@ -100,11 +113,14 @@ class PackedCircleManager(
      */
     fun handleCollisions() {
         val force = Vector2f()
+        val circleEntries = circles.values
 
         for (n in (0 until numberOfCollisionPasses)) {
-            for (circleA in circles) {
-                for (circleB in circles) {
-                    val isCircleAKinematic = (circleA == draggedCircle) || circleA.isPinned
+            for (circleA in circleEntries) {
+                // Kinematic circles can't be pushed around.
+                val isCircleAKinematic = (circleA == draggedCircle) || circleA.isPinned
+
+                for (circleB in circleEntries) {
                     val isCircleBKinematic = (circleB == draggedCircle) || circleB.isPinned
 
                     if (circleA == circleB || (isCircleAKinematic && isCircleBKinematic)) {
@@ -117,12 +133,24 @@ class PackedCircleManager(
                     // The distance between the two circles radii,
                     // but we're also gonna pad it a tiny bit
                     val r = (circleA.radius + circleB.radius) * 1.08f
-                    val d = MathUtils.getDistanceSquared(circleA.position, circleB.position)
+                    var d = MathUtils.getDistanceSquared(circleA.position, circleB.position)
+
+                    // Add a little bit of distance to create an inverse force
+                    if (d == 0f) {
+                        d = Random.nextFloat()
+                    }
 
                     if (d < (r * r) - 0.02f) {
                         force.x = dx
                         force.y = dy
-                        force.normalise()
+
+                        if (force.length() > 0f) {
+                            force.normalise()
+                        } else {
+                            // If force is 0, add a random force
+                            force.x = Random.nextFloat()
+                            force.y = Random.nextFloat()
+                        }
 
                         val inverseForce = (r - sqrt(d)) * 0.5f
                         force.multiplyInPlace(inverseForce)
@@ -157,7 +185,7 @@ class PackedCircleManager(
     /**
      * https://github.com/snorpey/circlepacker/blob/master/src/PackedCircleManager.js#L233
      */
-    fun handleBoundaryForCircle(circle: PackedCircle) {
+    fun handleBoundaryForCircle(circle: PackedCircle, bounds: Rectangle) {
         val x = circle.position.x
         val y = circle.position.y
         val radius = circle.radius
@@ -165,19 +193,19 @@ class PackedCircleManager(
         var overEdge = false
 
         // Wisp note: the y and height params might be swapped
-        if (x + radius >= this.bounds.right) {
-            circle.position.x = this.bounds.right - radius
+        if (x + radius >= bounds.right) {
+            circle.position.x = bounds.right - radius
             overEdge = true
-        } else if (x - radius < this.bounds.x) {
-            circle.position.x = this.bounds.x + radius
+        } else if (x - radius < bounds.left) {
+            circle.position.x = bounds.left + radius
             overEdge = true
         }
 
-        if (y + radius > this.bounds.bottom) {
-            circle.position.y = this.bounds.bottom - radius
+        if (y + radius > bounds.bottom) {
+            circle.position.y = bounds.bottom - radius
             overEdge = true
-        } else if (y - radius < this.bounds.height) {
-            circle.position.y = this.bounds.height + radius
+        } else if (y - radius < bounds.top) {
+            circle.position.y = bounds.top + radius
             overEdge = true
         }
 
@@ -191,5 +219,11 @@ class PackedCircleManager(
 val Rectangle.right: Int
     get() = this.x + this.width
 
+val Rectangle.left: Int
+    get() = this.x
+
 val Rectangle.bottom: Int
-    get() = this.y + this.height
+    get() = this.y - this.height
+
+val Rectangle.top: Int
+    get() = this.y// - this.height
