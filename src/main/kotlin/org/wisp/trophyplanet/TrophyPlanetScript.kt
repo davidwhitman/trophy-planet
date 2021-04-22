@@ -3,7 +3,10 @@ package org.wisp.trophyplanet
 import com.fs.starfarer.api.EveryFrameScriptWithCleanup
 import com.fs.starfarer.api.Global
 import com.fs.starfarer.api.campaign.PlanetAPI
+import com.fs.starfarer.api.campaign.SubmarketPlugin
+import com.fs.starfarer.api.fleet.FleetMemberAPI
 import com.fs.starfarer.api.impl.campaign.ids.Submarkets
+import com.fs.starfarer.api.util.Misc
 import org.lwjgl.util.vector.Vector2f
 import org.wisp.trophyplanet.packedcircle.PackedCircle
 import org.wisp.trophyplanet.packedcircle.PackedCircleManager
@@ -13,9 +16,11 @@ class TrophyPlanetScript : EveryFrameScriptWithCleanup {
     companion object {
         const val boundsSize = 2000f
         const val spriteScale = 0.5f
+        private const val planetCircleId = "planet"
     }
 
     var planet: PlanetAPI? = null
+    var settings: LifecyclePlugin.Settings? = null
 
     var done = false
 
@@ -29,18 +34,13 @@ class TrophyPlanetScript : EveryFrameScriptWithCleanup {
         if (isDone) return
 
         val planetInner = planet ?: return
+        val settingsInner = settings ?: return
 
         // If player is not in this script's planet's system, destroy self.
         if (Global.getSector().currentLocation != planetInner.containingLocation) {
             done = true
             return
         }
-
-        val storage =
-            planetInner.market?.submarketsCopy?.firstOrNull() { it.specId == Submarkets.SUBMARKET_STORAGE }
-                ?: return
-
-        if (storage.cargo.mothballedShips.numMembers == 0) return
 
         if (packedCircleManager == null) {
             packedCircleManager = PackedCircleManager(
@@ -56,7 +56,6 @@ class TrophyPlanetScript : EveryFrameScriptWithCleanup {
         }
 
         val packedCircleManagerInner = packedCircleManager!!
-        val planetCircleId = "planet"
 
         if (!packedCircleManagerInner.circles.containsKey(planetCircleId)) {
             packedCircleManagerInner.circles[planetCircleId] =
@@ -70,24 +69,99 @@ class TrophyPlanetScript : EveryFrameScriptWithCleanup {
                 )
         }
 
-        val ships = storage.cargo.mothballedShips.membersListCopy
-        val circleKeys = packedCircleManagerInner.circles.keys
+        val shipsToShow = mutableListOf<ShipData>()
+
+        if (settingsInner.showStoredShips) {
+            val mothballedShips =
+                planetInner.market?.submarketsCopy?.firstOrNull { it.specId == Submarkets.SUBMARKET_STORAGE }
+                    ?.cargo?.mothballedShips
+
+            if (mothballedShips?.numMembers != null && mothballedShips.numMembers > 0) {
+                shipsToShow += mothballedShips.membersListCopy
+                    .map { ship -> ShipData(ship, ship.shipName) }
+            }
+        }
+
+        if (settingsInner.showShipsForSale) {
+            val marketShips = mutableListOf<FleetMemberAPI>()
+            val openMarketShips =
+                planetInner.market?.submarketsCopy?.firstOrNull { it.specId == Submarkets.SUBMARKET_OPEN }
+                    ?.cargo?.mothballedShips?.membersListCopy
+
+            if (openMarketShips != null) {
+                marketShips.addAll(openMarketShips)
+            }
+
+
+            val militaryMarket =
+                planetInner.market?.submarketsCopy?.firstOrNull { it.specId == Submarkets.GENERIC_MILITARY }
+            val militaryMarketShips =
+                militaryMarket
+                    ?.cargo?.mothballedShips?.membersListCopy
+            if (militaryMarketShips?.any() == true
+                && militaryMarket.plugin?.isIllegalOnSubmarket(
+                    militaryMarketShips.firstOrNull(),
+                    SubmarketPlugin.TransferAction.PLAYER_BUY
+                ) != true
+            ) {
+                marketShips.addAll(militaryMarketShips)
+            }
+
+
+            val blackMarketShips =
+                planetInner.market?.submarketsCopy?.firstOrNull { it.specId == Submarkets.SUBMARKET_BLACK }
+                    ?.cargo?.mothballedShips?.membersListCopy
+
+            if (blackMarketShips != null) {
+                marketShips.addAll(blackMarketShips)
+            }
+
+            if (marketShips.count() > 0) {
+                shipsToShow += marketShips
+                    .map { ship -> ShipData(ship, "${ship.hullSpec.nameWithDesignationWithDashClass} (${Misc.getDGSCredits(ship.baseBuyValue)})") }
+            }
+        }
+
+        setShipsAroundPlanet(
+            ships = shipsToShow,
+            packedCircleManager = packedCircleManagerInner,
+            planet = planetInner
+        )
+
+        // Keeps desired location synced, since planet will be orbiting and ships should follow it
+        packedCircleManagerInner.desiredTarget = planetInner.location
+        packedCircleManagerInner.updatePositions()
+    }
+
+    data class ShipData(
+        val fleetMember: FleetMemberAPI,
+        val displayName: String
+    ) {
+        val id = fleetMember.id
+    }
+
+    private fun setShipsAroundPlanet(
+        ships: List<ShipData>,
+        packedCircleManager: PackedCircleManager,
+        planet: PlanetAPI
+    ) {
+        val circleKeys = packedCircleManager.circles.keys
 
         // Create entities and circles for each stored ship if they don't exist already
         val shipsToAddEntitiesFor = ships.filter { it.id !in circleKeys }
         shipsToAddEntitiesFor.forEachIndexed { index, ship ->
-            val sprite = Global.getSettings().getSprite(ship.hullSpec.spriteName)
-            val spriteDiameter = hypot(sprite.width, sprite.height) * TrophyPlanetScript.spriteScale
+            val sprite = Global.getSettings().getSprite(ship.fleetMember.hullSpec.spriteName)
+            val spriteDiameter = hypot(sprite.width, sprite.height) * spriteScale
 
-            val customEntity = planetInner.containingLocation.addCustomEntity(
+            val customEntity = planet.containingLocation.addCustomEntity(
                 ship.id,
-                null,
+                ship.displayName,
                 "Trophy_Planet-DummyFleet",
                 null,
                 null
             )
                 .apply {
-                    this.addTag(TrophyPlanetTags.getTagForPlanetEntities(planetInner))
+                    this.addTag(Constants.getTagForPlanetEntities(planet))
                 }
 
             (customEntity.customPlugin as DummyFleetEntity).apply {
@@ -95,11 +169,11 @@ class TrophyPlanetScript : EveryFrameScriptWithCleanup {
                 this.addSprite(sprite)
             }
 
-            if (!packedCircleManagerInner.circles.containsKey(ship.id)) {
-                packedCircleManagerInner.circles[ship.id] = PackedCircle(
+            if (!packedCircleManager.circles.containsKey(ship.id)) {
+                packedCircleManager.circles[ship.id] = PackedCircle(
                     id = ship.id,
                     radius = spriteDiameter / 2,
-                    position = Vector2f(planetInner.location.x + index, planetInner.location.y + index),
+                    position = Vector2f(planet.location.x + index, planet.location.y + index),
                     isPulledToCenter = true,
                     isPinned = false,
                     syncedEntity = PackedCircle.Entity(customEntity.location)
@@ -113,13 +187,9 @@ class TrophyPlanetScript : EveryFrameScriptWithCleanup {
         entityIdsToRemove.forEach { shipId ->
             if (shipId == planetCircleId) return@forEach
 
-            packedCircleManagerInner.circles.remove(shipId)
-            planetInner.containingLocation.removeEntity(planetInner.containingLocation.getEntityById(shipId))
+            packedCircleManager.circles.remove(shipId)
+            planet.containingLocation.removeEntity(planet.containingLocation.getEntityById(shipId))
         }
-
-        // Keeps desired location synced, since planet will be orbiting and ships should follow it
-        packedCircleManagerInner.desiredTarget = planetInner.location
-        packedCircleManagerInner.updatePositions()
     }
 
     override fun cleanup() {
@@ -127,7 +197,7 @@ class TrophyPlanetScript : EveryFrameScriptWithCleanup {
 
         // Remove ships around this script's planet
         planetInner?.containingLocation
-            ?.getCustomEntitiesWithTag(TrophyPlanetTags.getTagForPlanetEntities(planetInner))
+            ?.getCustomEntitiesWithTag(Constants.getTagForPlanetEntities(planetInner))
             ?.forEach { entity -> planetInner.containingLocation?.removeEntity(entity) }
 
         // Wipe field variables, probably not needed but out of an abundance of caution
