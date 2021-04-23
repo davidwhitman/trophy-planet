@@ -1,11 +1,11 @@
 package org.wisp.trophyplanet
 
-import com.fs.starfarer.api.campaign.PlanetAPI
+import com.fs.starfarer.api.campaign.SectorEntityToken
 
 object Constants {
     const val MOD_ID = "wisp_trophy-planet"
 
-    private const val TROPHY_ENTITY_TAG = "wisp_trophyEntity"
+    const val TROPHY_ENTITY_TAG_PREFIX = "wisp_trophyEntity"
 
-    fun getTagForPlanetEntities(planetAPI: PlanetAPI) = TROPHY_ENTITY_TAG + "_" + planetAPI.id
+    fun getTagForEntities(token: SectorEntityToken) = TROPHY_ENTITY_TAG_PREFIX + "_" + token.id
 }

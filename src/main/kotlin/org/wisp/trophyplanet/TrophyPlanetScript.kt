@@ -4,13 +4,15 @@ import com.fs.starfarer.api.EveryFrameScriptWithCleanup
 import com.fs.starfarer.api.Global
 import com.fs.starfarer.api.campaign.PlanetAPI
 import com.fs.starfarer.api.campaign.SubmarketPlugin
+import com.fs.starfarer.api.campaign.econ.SubmarketAPI
 import com.fs.starfarer.api.fleet.FleetMemberAPI
 import com.fs.starfarer.api.graphics.SpriteAPI
 import com.fs.starfarer.api.impl.campaign.ids.Submarkets
-import com.fs.starfarer.api.util.Misc
+import com.fs.starfarer.api.ui.TooltipMakerAPI
 import org.lwjgl.util.vector.Vector2f
 import org.wisp.trophyplanet.packedcircle.PackedCircle
 import org.wisp.trophyplanet.packedcircle.PackedCircleManager
+import wisp.questgiver.addPara
 import kotlin.math.hypot
 
 class TrophyPlanetScript : EveryFrameScriptWithCleanup {
@@ -22,6 +24,7 @@ class TrophyPlanetScript : EveryFrameScriptWithCleanup {
 
     var planet: PlanetAPI? = null
     var settings: LifecyclePlugin.Settings? = null
+    var hasScriptUpdatedMarkets = false
 
     var done = false
 
@@ -52,15 +55,14 @@ class TrophyPlanetScript : EveryFrameScriptWithCleanup {
             return
         }
 
+        if (!hasScriptUpdatedMarkets) {
+            planetInner.market?.submarketsCopy?.forEach { it.plugin?.updateCargoPrePlayerInteraction() }
+            hasScriptUpdatedMarkets = true
+        }
+
         if (packedCircleManager == null) {
             packedCircleManager = PackedCircleManager(
                 bounds = null,
-//                bounds = Rectangle(
-//                    (planetInner.location.x - boundsSize).toInt(),
-//                    (planetInner.location.y + boundsSize).toInt(),
-//                    boundsSize.toInt(),
-//                    boundsSize.toInt()
-//                ),
                 desiredTarget = planetInner.location
             )
         }
@@ -72,26 +74,19 @@ class TrophyPlanetScript : EveryFrameScriptWithCleanup {
         circlesToShow += CircleData.Pinned(
             id = planetCircleId,
             displayName = null,
+            factionId = null,
             radius = planetInner.radius,
             spriteToShow = null,
-            position = planetInner.location
+            position = planetInner.location,
+            tooltipMaker = null
         )
 
-//        if (!packedCircleManagerInner.circles.containsKey(planetCircleId)) {
-//            packedCircleManagerInner.circles[planetCircleId] =
-//                PackedCircle(
-//                    id = planetCircleId,
-//                    radius = planetInner.radius,
-//                    position = planetInner.location,
-//                    isPulledToCenter = false,
-//                    isPinned = true,
-//                    syncedEntity = null
-//                )
-//        }
-
+        // Personal ships
         if (settingsInner.showStoredShips) {
-            val mothballedShips =
+            val market =
                 planetInner.market?.submarketsCopy?.firstOrNull { it.specId == Submarkets.SUBMARKET_STORAGE }
+            val mothballedShips =
+                market
                     ?.cargo?.mothballedShips
 
             if (mothballedShips?.numMembers != null && mothballedShips.numMembers > 0) {
@@ -101,56 +96,47 @@ class TrophyPlanetScript : EveryFrameScriptWithCleanup {
                         CircleData.Unpinned(
                             id = ship.id,
                             displayName = ship.shipName,
+                            factionId = market.faction?.id,
                             radius = (hypot(sprite.width, sprite.height) * spriteScale) / 2,
-                            spriteToShow = sprite
+                            spriteToShow = sprite,
+                            tooltipMaker = { tooltip, isExpanded ->
+                                tooltip.addPara { ship.hullSpec.nameWithDesignationWithDashClass }
+                            }
                         )
                     }
             }
         }
 
         if (settingsInner.showShipsForSale) {
-            val marketShips = mutableListOf<FleetMemberAPI>()
-            val openMarketShips =
-                planetInner.market?.submarketsCopy?.firstOrNull { it.specId == Submarkets.SUBMARKET_OPEN }
-                    ?.cargo?.mothballedShips?.membersListCopy
+            val marketShips = planetInner.market?.submarketsCopy
+                ?.flatMap { subMarket ->
+                    val ships = subMarket?.cargo?.mothballedShips?.membersListCopy
 
-            if (openMarketShips != null) {
-                marketShips.addAll(openMarketShips)
-            }
-
-
-            val militaryMarket =
-                planetInner.market?.submarketsCopy?.firstOrNull { it.specId == Submarkets.GENERIC_MILITARY }
-            val militaryMarketShips =
-                militaryMarket
-                    ?.cargo?.mothballedShips?.membersListCopy
-            if (militaryMarketShips?.any() == true
-                && militaryMarket.plugin?.isIllegalOnSubmarket(
-                    militaryMarketShips.firstOrNull(),
-                    SubmarketPlugin.TransferAction.PLAYER_BUY
-                ) != true
-            ) {
-                marketShips.addAll(militaryMarketShips)
-            }
-
-
-            val blackMarketShips =
-                planetInner.market?.submarketsCopy?.firstOrNull { it.specId == Submarkets.SUBMARKET_BLACK }
-                    ?.cargo?.mothballedShips?.membersListCopy
-
-            if (blackMarketShips != null) {
-                marketShips.addAll(blackMarketShips)
-            }
+                    if (subMarket != null
+                        && ships?.any() == true
+                        && subMarket.plugin?.isIllegalOnSubmarket(
+                            ships.firstOrNull(),
+                            SubmarketPlugin.TransferAction.PLAYER_BUY
+                        ) != true
+                    ) {
+                        return@flatMap ships.map { subMarket to it }
+                    } else return@flatMap emptyList<Pair<SubmarketAPI, FleetMemberAPI>>()
+                } ?: emptyList()
 
             if (marketShips.count() > 0) {
                 circlesToShow += marketShips
-                    .map { ship ->
+                    .map { (market, ship) ->
                         val sprite = Global.getSettings().getSprite(ship.hullSpec.spriteName)
                         CircleData.Unpinned(
                             id = ship.id,
-                            displayName = "${ship.hullSpec.nameWithDesignationWithDashClass} (${Misc.getDGSCredits(ship.baseBuyValue)})",
+                            displayName = ship.hullSpec.nameWithDesignationWithDashClass,
+                            factionId = market?.faction?.id,
                             radius = (hypot(sprite.width, sprite.height) * spriteScale) / 2,
-                            spriteToShow = sprite
+                            spriteToShow = sprite,
+                            tooltipMaker = { tooltip, isExpanded ->
+                                tooltip.showShips(listOf(ship), 1, false, 16f)
+                                tooltip.addPara(textColor = market.faction.color) { market.nameOneLine }
+                            }
                         )
                     }
             }
@@ -162,9 +148,11 @@ class TrophyPlanetScript : EveryFrameScriptWithCleanup {
                 CircleData.Pinned(
                     id = it.id,
                     displayName = null,
+                    factionId = null,
                     radius = it.radius,
                     spriteToShow = null,
-                    position = it.location
+                    position = it.location,
+                    tooltipMaker = null
                 )
             }
         }
@@ -180,6 +168,16 @@ class TrophyPlanetScript : EveryFrameScriptWithCleanup {
         packedCircleManagerInner.updatePositions()
     }
 
+    private fun shouldShowShips(
+        market: SubmarketAPI?,
+        ships: MutableList<FleetMemberAPI>?
+    ) = market != null
+            && ships?.any() == true
+            && market.plugin?.isIllegalOnSubmarket(
+        ships.firstOrNull(),
+        SubmarketPlugin.TransferAction.PLAYER_BUY
+    ) != true
+
     private fun setShipsAroundPlanet(
         circles: List<CircleData>,
         packedCircleManager: PackedCircleManager,
@@ -188,39 +186,41 @@ class TrophyPlanetScript : EveryFrameScriptWithCleanup {
         val circleKeys = packedCircleManager.circles.keys
 
         // Create entities and circles for each stored ship if they don't exist already
-        val shipsToAddEntitiesFor = circles.filter { it.id !in circleKeys }
-        shipsToAddEntitiesFor.forEachIndexed { index, ship ->
-            val customEntity = if (ship.spriteToShow != null) {
+        val circlesToAddSpritesFor = circles.filter { it.id !in circleKeys }
+        circlesToAddSpritesFor.forEachIndexed { index, circleData ->
+            val customEntity = if (circleData.spriteToShow != null) {
                 planet.containingLocation.addCustomEntity(
-                    ship.id,
-                    ship.displayName,
+                    circleData.id,
+                    circleData.displayName,
                     "Trophy_Planet-DummyFleet",
-                    null,
+                    circleData.factionId,
                     null
                 )
                     .apply {
-                        this.addTag(Constants.getTagForPlanetEntities(planet))
+                        this.radius = circleData.radius
+                        this.addTag(Constants.getTagForEntities(planet))
 
                         (this.customPlugin as DummyFleetEntity).apply {
                             this.spriteScale = TrophyPlanetScript.spriteScale
-                            this.addSprite(ship.spriteToShow)
+                            this.addSprite(circleData.spriteToShow)
+                            this.tooltipMaker = circleData.tooltipMaker
                         }
                     }
             } else {
                 null
             }
 
-            if (!packedCircleManager.circles.containsKey(ship.id)) {
-                packedCircleManager.circles[ship.id] = PackedCircle(
-                    id = ship.id,
-                    radius = ship.radius,
+            if (!packedCircleManager.circles.containsKey(circleData.id)) {
+                packedCircleManager.circles[circleData.id] = PackedCircle(
+                    id = circleData.id,
+                    radius = circleData.radius,
                     position =
-                    when (ship) {
+                    when (circleData) {
                         is CircleData.Unpinned -> Vector2f(planet.location.x + index, planet.location.y + index)
-                        is CircleData.Pinned -> ship.position
+                        is CircleData.Pinned -> circleData.position
                     },
-                    isPulledToCenter = ship.shouldModifyPosition,
-                    isPinned = !ship.shouldModifyPosition,
+                    isPulledToCenter = circleData.shouldModifyPosition,
+                    isPinned = !circleData.shouldModifyPosition,
                     syncedEntity = customEntity?.let { PackedCircle.Entity(customEntity.location) }
                 )
             }
@@ -248,8 +248,11 @@ class TrophyPlanetScript : EveryFrameScriptWithCleanup {
 
         // Remove ships around this script's planet
         planetInner?.containingLocation
-            ?.getCustomEntitiesWithTag(Constants.getTagForPlanetEntities(planetInner))
-            ?.forEach { entity -> planetInner.containingLocation?.removeEntity(entity) }
+            ?.getCustomEntitiesWithTag(Constants.getTagForEntities(planetInner))
+            ?.forEach { entity ->
+                (entity.customPlugin as? DummyFleetEntity)?.onDestroy()
+                planetInner.containingLocation?.removeEntity(entity)
+            }
 
         // Wipe field variables, probably not needed but out of an abundance of caution
         packedCircleManager?.circles?.clear()
@@ -260,34 +263,44 @@ class TrophyPlanetScript : EveryFrameScriptWithCleanup {
     private sealed class CircleData(
         val id: String,
         val displayName: String?,
+        val factionId: String?,
         val radius: Float,
         val spriteToShow: SpriteAPI?,
+        val tooltipMaker: ((tooltip: TooltipMakerAPI, expanded: Boolean) -> Unit)?,
         val shouldModifyPosition: Boolean
     ) {
         class Pinned(
             id: String,
             displayName: String?,
+            factionId: String?,
             radius: Float,
             spriteToShow: SpriteAPI?,
+            tooltipMaker: ((tooltip: TooltipMakerAPI, expanded: Boolean) -> Unit)?,
             val position: Vector2f
         ) : CircleData(
-            id,
-            displayName,
-            radius,
-            spriteToShow,
+            id = id,
+            displayName = displayName,
+            factionId = factionId,
+            radius = radius,
+            spriteToShow = spriteToShow,
+            tooltipMaker = tooltipMaker,
             shouldModifyPosition = false
         )
 
         class Unpinned(
             id: String,
             displayName: String?,
+            factionId: String?,
             radius: Float,
-            spriteToShow: SpriteAPI?
+            spriteToShow: SpriteAPI?,
+            tooltipMaker: ((tooltip: TooltipMakerAPI, expanded: Boolean) -> Unit)?
         ) : CircleData(
-            id,
-            displayName,
-            radius,
-            spriteToShow,
+            id = id,
+            displayName = displayName,
+            factionId = factionId,
+            radius = radius,
+            spriteToShow = spriteToShow,
+            tooltipMaker = tooltipMaker,
             shouldModifyPosition = true
         )
     }

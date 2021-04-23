@@ -5,9 +5,13 @@ import com.fs.starfarer.api.campaign.SectorEntityToken
 import com.fs.starfarer.api.combat.ViewportAPI
 import com.fs.starfarer.api.graphics.SpriteAPI
 import com.fs.starfarer.api.impl.campaign.BaseCustomEntityPlugin
+import com.fs.starfarer.api.ui.TooltipMakerAPI
 
 class DummyFleetEntity : BaseCustomEntityPlugin() {
     var spriteScale: Float = 1f
+
+    @Transient
+    var tooltipMaker: ((tooltip: TooltipMakerAPI, isExpanded: Boolean) -> Unit)? = null
 
     @Transient
     private var sprites = mutableListOf<SpriteAPI>()
@@ -36,5 +40,28 @@ class DummyFleetEntity : BaseCustomEntityPlugin() {
         sprites.forEach {
             it.renderAtCenter(entity.location.x, entity.location.y)
         }
+    }
+
+    override fun hasCustomMapTooltip(): Boolean = tooltipMaker != null
+
+    override fun isMapTooltipExpandable(): Boolean = true
+
+    override fun createMapTooltip(tooltip: TooltipMakerAPI?, expanded: Boolean) {
+        super.createMapTooltip(tooltip, expanded)
+        tooltip ?: return
+        tooltipMaker?.invoke(tooltip, expanded)
+    }
+
+    override fun appendToCampaignTooltip(tooltip: TooltipMakerAPI?, level: SectorEntityToken.VisibilityLevel?) {
+        super.appendToCampaignTooltip(tooltip, level)
+        tooltip ?: return
+        tooltipMaker?.invoke(tooltip, false)
+    }
+
+    /**
+     * Call this when entity is being removed to avoid memory leaks.
+     */
+    fun onDestroy() {
+        tooltipMaker = null
     }
 }

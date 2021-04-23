@@ -11,6 +11,16 @@ class LifecyclePlugin : BaseModPlugin() {
     override fun onGameLoad(newGame: Boolean) {
         super.onGameLoad(newGame)
 
+        // Remove all entities on load, just in case something wasn't cleaned up
+        Global.getSector().starSystems
+            .forEach { sys ->
+                sys.allEntities
+                    .filter { it.tags.any { it.startsWith(Constants.TROPHY_ENTITY_TAG_PREFIX) } }
+                    .toList()
+                    .forEach { sys.removeEntity(it) }
+            }
+
+
         val settings =
             Global.getSettings().getMergedJSONForMod("data/config/modSettings.json", MOD_ID)
                 .getJSONObject("wisp_trophy-planet")
