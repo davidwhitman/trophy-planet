@@ -3,11 +3,14 @@ package org.wisp.trophyplanet
 import com.fs.starfarer.api.BaseModPlugin
 import com.fs.starfarer.api.Global
 import com.fs.starfarer.api.campaign.*
+import com.fs.starfarer.api.util.Misc
 import com.thoughtworks.xstream.XStream
+import org.lazywizard.lazylib.ext.json.getFloat
 import org.wisp.trophyplanet.Constants.MOD_ID
-import wisp.questgiver.wispLib.isSolidPlanet
 
 class LifecyclePlugin : BaseModPlugin() {
+    private val entitiestoKeepAcrossSavingProcess = mutableListOf<Pair<StarSystemAPI, SectorEntityToken>>()
+
     override fun onGameLoad(newGame: Boolean) {
         super.onGameLoad(newGame)
 
@@ -27,7 +30,10 @@ class LifecyclePlugin : BaseModPlugin() {
                 .let { settings ->
                     Settings(
                         showStoredShips = settings.getBoolean("showShipsInStorage"),
-                        showShipsForSale = settings.getBoolean("showShipsForSale")
+                        showShipsForSale = settings.getBoolean("showShipsForSale"),
+                        normalizingTargetSize = settings.getFloat("normalizingTargetSize"),
+                        normalizingAmount = settings.getFloat("normalizingAmount"),
+                        preNormalizationSpriteScaleModifier = settings.getFloat("preNormalizationSpriteScaleModifier")
                     )
                 }
 
@@ -53,14 +59,41 @@ class LifecyclePlugin : BaseModPlugin() {
     }
 
     private fun addScriptForSystem(starSystemAPI: StarSystemAPI, settings: Settings) {
-        starSystemAPI.planets
-            .filter { it.isSolidPlanet }//&& it.faction.isPlayerFaction }
-            .forEach { planet ->
+        Misc.getMarketsInLocation(starSystemAPI)
+            .forEach { marketInsystem ->
                 Global.getSector().addTransientScript(TrophyPlanetScript().apply {
-                    this.planet = planet
+                    this.market = marketInsystem
                     this.settings = settings
                 })
             }
+    }
+
+    override fun beforeGameSave() {
+        super.beforeGameSave()
+        entitiestoKeepAcrossSavingProcess.clear()
+
+        // Don't put the entities in the save file, they should be regenerated each time
+        // and this will help prevent save incompatibility.
+        Global.getSector().starSystems
+            .forEach { sys ->
+                sys.allEntities
+                    .filter { it.tags.any { it.startsWith(Constants.TROPHY_ENTITY_TAG_PREFIX) } }
+                    .toList()
+                    .forEach {
+                        entitiestoKeepAcrossSavingProcess.add(sys to it)
+                        sys.removeEntity(it)
+                    }
+            }
+    }
+
+    override fun afterGameSave() {
+        super.afterGameSave()
+
+        entitiestoKeepAcrossSavingProcess
+            .forEach { (sys, entity) ->
+                sys.addEntity(entity)
+            }
+        entitiestoKeepAcrossSavingProcess.clear()
     }
 
     /**
@@ -72,6 +105,9 @@ class LifecyclePlugin : BaseModPlugin() {
 
     data class Settings(
         val showStoredShips: Boolean,
-        val showShipsForSale: Boolean
+        val showShipsForSale: Boolean,
+        val normalizingTargetSize: Float,
+        val normalizingAmount: Float,
+        val preNormalizationSpriteScaleModifier: Float
     )
 }

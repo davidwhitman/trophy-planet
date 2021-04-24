@@ -12,7 +12,7 @@ object Variables {
     val modName = "Trophy Fleet"
     val author = "Wisp"
     val description = "Mod description."
-    val gameVersion = "0.95a-RC12"
+    val gameVersion = "0.95a-RC15"
     val jars = arrayOf("jars/$jarFileName")
     val modPlugin = "org.wisp.trophyplanet.LifecyclePlugin"
     val isUtilityMod = false
