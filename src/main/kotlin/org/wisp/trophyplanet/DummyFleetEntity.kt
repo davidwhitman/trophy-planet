@@ -9,6 +9,7 @@ import com.fs.starfarer.api.ui.TooltipMakerAPI
 
 class DummyFleetEntity : BaseCustomEntityPlugin() {
     var spriteScale: Float = 1f
+    var spriteAlpha: Float = 1f
 
     @Transient
     var tooltipMaker: ((tooltip: TooltipMakerAPI, isExpanded: Boolean) -> Unit)? = null
@@ -38,6 +39,7 @@ class DummyFleetEntity : BaseCustomEntityPlugin() {
         super.render(layer, viewport)
 
         sprites.forEach {
+            it.alphaMult = this.spriteAlpha
             it.renderAtCenter(entity.location.x, entity.location.y)
         }
     }

@@ -34,7 +34,8 @@ class LifecyclePlugin : BaseModPlugin() {
                             normalizingTargetSize = settings.getFloat("normalizingTargetSize"),
                             normalizingAmount = settings.getFloat("normalizingAmount"),
                             preNormalizationSpriteScaleModifier = settings.getFloat("preNormalizationSpriteScaleModifier"),
-                            alphaMult = settings.getFloat("alphaMult")
+                            alphaMult = settings.getFloat("alphaMult"),
+                            shouldFadeOnZoomIn = settings.getBoolean("shouldFadeOnZoomIn")
                         )
                     }
 
@@ -121,6 +122,7 @@ class LifecyclePlugin : BaseModPlugin() {
         val normalizingTargetSize: Float,
         val normalizingAmount: Float,
         val preNormalizationSpriteScaleModifier: Float,
-        val alphaMult: Float
+        val alphaMult: Float,
+        val shouldFadeOnZoomIn: Boolean
     )
 }

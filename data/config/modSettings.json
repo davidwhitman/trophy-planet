@@ -1,15 +1,17 @@
 {
   "wisp_trophy-planet": {
-    "showShipsInStorage": false,
+    "showShipsInStorage": true,
     "showShipsForSale": true,
     # The scale of the sprite prior to any normalization.
     "preNormalizationSpriteScaleModifier": 0.5,
     # A higher number makes smaller ships larger and larger ships smaller.
     # 0 for no normalization.
-    "normalizingAmount": 1.00,
+    "normalizingAmount": 0.80,
     # The overall size of the sprites to normalize towards.
-    "normalizingTargetSize": 35,
+    "normalizingTargetSize": 20,
     # The transparency of the sprites, between 0 and 1.
-    "alphaMult": 0.6
+    "alphaMult": 0.2,
+    # Whether or not to fade in on zoom
+    "shouldFadeOnZoomIn": true
   }
 }

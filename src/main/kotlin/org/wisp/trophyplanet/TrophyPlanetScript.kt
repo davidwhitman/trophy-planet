@@ -136,7 +136,22 @@ class TrophyPlanetScript : EveryFrameScriptWithCleanup {
                 circlesToShow += marketShips
                     .map { (market, ship) ->
                         val sprite = Global.getSettings().getSprite(ship.hullSpec.spriteName)
-                            .apply { alphaMult = settingsInner.alphaMult }
+                            .apply {
+                                val zoomMult = kotlin.runCatching { Global.getSector()?.campaignUI?.zoomFactor ?: 1f }
+                                    .getOrDefault(1f)
+                                if (settingsInner.shouldFadeOnZoomIn) {
+                                    val zoomedIn = 0.5f
+                                    val zoomedOut = 3.0f
+                                    // Thank you AlexAtheos for putting me on the right path
+                                    // y = y1 + ((y2 - y1)/(x2 - x1))*(x - x1)
+                                    val mult =
+                                        kotlin.runCatching { 1f + ((settingsInner.alphaMult - 1f) / (zoomedOut - zoomedIn)) * (zoomMult - zoomedIn) }
+                                            .getOrDefault(settingsInner.alphaMult)
+                                    alphaMult = mult
+                                } else {
+                                    alphaMult = zoomMult
+                                }
+                            }
                         val radius = hypot(sprite.width, sprite.height) / 2
                         CircleData(
                             id = ship.id,
@@ -226,6 +241,7 @@ class TrophyPlanetScript : EveryFrameScriptWithCleanup {
 
                         (this.customPlugin as DummyFleetEntity).apply {
                             this.spriteScale = circleData.customEntityInfo.scalingFactor
+                            this.spriteAlpha = circleData.customEntityInfo.spriteToShow.alphaMult
                             this.addSprite(circleData.customEntityInfo.spriteToShow)
                             this.tooltipMaker = circleData.customEntityInfo.tooltipMaker
                         }
@@ -251,6 +267,13 @@ class TrophyPlanetScript : EveryFrameScriptWithCleanup {
                     syncedEntity = customEntity?.let { PackedCircle.Entity(customEntity.location) }
                 )
             }
+        }
+
+        // Update entities that are already present
+        val circlesToUpdate = circles.filter { it.id in circleKeys }
+        circlesToUpdate.forEach { data ->
+            (marketLocation.containingLocation.getEntityById(data.id)?.customPlugin as? DummyFleetEntity)?.spriteAlpha =
+                data.customEntityInfo?.spriteToShow?.alphaMult ?: 1f
         }
 
         // Remove any circles and entities whose ships are no longer in storage
