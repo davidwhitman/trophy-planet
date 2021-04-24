@@ -2,6 +2,8 @@ package org.wisp.trophyplanet
 
 import com.fs.starfarer.api.EveryFrameScriptWithCleanup
 import com.fs.starfarer.api.Global
+import com.fs.starfarer.api.campaign.CampaignUIAPI
+import com.fs.starfarer.api.campaign.CoreUIAPI
 import com.fs.starfarer.api.campaign.SectorEntityToken
 import com.fs.starfarer.api.campaign.SubmarketPlugin
 import com.fs.starfarer.api.campaign.econ.MarketAPI
@@ -9,7 +11,9 @@ import com.fs.starfarer.api.campaign.econ.SubmarketAPI
 import com.fs.starfarer.api.fleet.FleetMemberAPI
 import com.fs.starfarer.api.graphics.SpriteAPI
 import com.fs.starfarer.api.impl.campaign.ids.Submarkets
+import com.fs.starfarer.api.ui.HintPanelAPI
 import com.fs.starfarer.api.ui.TooltipMakerAPI
+import com.fs.starfarer.api.util.Misc
 import org.lwjgl.util.vector.Vector2f
 import org.wisp.trophyplanet.packedcircle.PackedCircle
 import org.wisp.trophyplanet.packedcircle.PackedCircleManager
@@ -103,7 +107,7 @@ class TrophyPlanetScript : EveryFrameScriptWithCleanup {
                                 scalingFactor = getScalingFactor(radius, settingsInner),
                                 spriteToShow = sprite,
                                 tooltipMaker = { tooltip, isExpanded ->
-                                    tooltip.addPara(textColor = market.faction.color) { market.nameOneLine }
+                                    tooltip.addPara(textColor = market.faction.color) { "In ${market.nameOneLine}" }
                                 }
                             ),
                             radius = radius,
@@ -116,15 +120,13 @@ class TrophyPlanetScript : EveryFrameScriptWithCleanup {
         // Ships for sale in markets
         if (settingsInner.showShipsForSale) {
             val marketShips = planetInner.market?.submarketsCopy
+                ?.filter { it.specId != Submarkets.SUBMARKET_STORAGE }
                 ?.flatMap { subMarket ->
                     val ships = subMarket?.cargo?.mothballedShips?.membersListCopy
 
                     if (subMarket != null
                         && ships?.any() == true
-                        && subMarket.plugin?.isIllegalOnSubmarket(
-                            ships.firstOrNull(),
-                            SubmarketPlugin.TransferAction.PLAYER_BUY
-                        ) != true
+                        && shouldShowShips(subMarket, ships)
                     ) {
                         return@flatMap ships.map { subMarket to it }
                     } else return@flatMap emptyList<Pair<SubmarketAPI, FleetMemberAPI>>()
@@ -134,6 +136,7 @@ class TrophyPlanetScript : EveryFrameScriptWithCleanup {
                 circlesToShow += marketShips
                     .map { (market, ship) ->
                         val sprite = Global.getSettings().getSprite(ship.hullSpec.spriteName)
+                            .apply { alphaMult = settingsInner.alphaMult }
                         val radius = hypot(sprite.width, sprite.height) / 2
                         CircleData(
                             id = ship.id,
@@ -143,7 +146,13 @@ class TrophyPlanetScript : EveryFrameScriptWithCleanup {
                                 scalingFactor = getScalingFactor(radius, settingsInner),
                                 spriteToShow = sprite,
                                 tooltipMaker = { tooltip, isExpanded ->
-                                    tooltip.addPara(textColor = market.faction.color) { market.nameOneLine }
+                                    tooltip.addPara(
+                                        "Available from the %s for %s credits.",
+                                        10f,
+                                        arrayOf(market.faction.color, Misc.getHighlightColor()),
+                                        market.nameOneLine,
+                                        Misc.getWithDGS(ship.baseBuyValue + (ship.baseBuyValue * market.tariff))
+                                    )
                                 }
                             ),
                             radius = radius,
@@ -186,6 +195,12 @@ class TrophyPlanetScript : EveryFrameScriptWithCleanup {
         ships.firstOrNull(),
         SubmarketPlugin.TransferAction.PLAYER_BUY
     ) != true
+            && market.plugin?.isEnabled(object : CoreUIAPI {
+        override fun getTradeMode(): CampaignUIAPI.CoreUITradeMode = CampaignUIAPI.CoreUITradeMode.OPEN
+
+        override fun getHintPanel(): HintPanelAPI? = null
+
+    }) != false
 
     private fun setShipsAroundMarketLocation(
         circles: List<CircleData>,
@@ -202,7 +217,7 @@ class TrophyPlanetScript : EveryFrameScriptWithCleanup {
                     circleData.id,
                     circleData.customEntityInfo.displayName,
                     "Trophy_Planet-DummyFleet",
-                    circleData.customEntityInfo.factionId,
+                    null,
                     null
                 )
                     .apply {

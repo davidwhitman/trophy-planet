@@ -11,31 +11,57 @@ import org.wisp.trophyplanet.Constants.MOD_ID
 class LifecyclePlugin : BaseModPlugin() {
     private val entitiestoKeepAcrossSavingProcess = mutableListOf<Pair<StarSystemAPI, SectorEntityToken>>()
 
+    companion object {
+        var settings: Settings? = null
+
+        fun reload() {
+            Global.getSector().starSystems
+                .forEach { sys ->
+                    sys.allEntities
+                        .filter { it.tags.any { it.startsWith(Constants.TROPHY_ENTITY_TAG_PREFIX) } }
+                        .toList()
+                        .forEach { sys.removeEntity(it) }
+                }
+
+
+            settings =
+                Global.getSettings().getMergedJSONForMod("data/config/modSettings.json", MOD_ID)
+                    .getJSONObject("wisp_trophy-planet")
+                    .let { settings ->
+                        Settings(
+                            showStoredShips = settings.getBoolean("showShipsInStorage"),
+                            showShipsForSale = settings.getBoolean("showShipsForSale"),
+                            normalizingTargetSize = settings.getFloat("normalizingTargetSize"),
+                            normalizingAmount = settings.getFloat("normalizingAmount"),
+                            preNormalizationSpriteScaleModifier = settings.getFloat("preNormalizationSpriteScaleModifier"),
+                            alphaMult = settings.getFloat("alphaMult")
+                        )
+                    }
+
+            Global.getSector().removeTransientScriptsOfClass(TrophyPlanetScript::class.java)
+
+            if ((Global.getSector().currentLocation as? StarSystemAPI) != null) {
+                addScriptForSystem(Global.getSector().currentLocation as StarSystemAPI, settings!!)
+            }
+        }
+
+        private fun addScriptForSystem(starSystemAPI: StarSystemAPI, settings: Settings) {
+            Misc.getMarketsInLocation(starSystemAPI)
+                .forEach { marketInsystem ->
+                    Global.getSector().addTransientScript(TrophyPlanetScript().apply {
+                        this.market = marketInsystem
+                        this.settings = settings
+                    })
+                }
+        }
+    }
+
     override fun onGameLoad(newGame: Boolean) {
         super.onGameLoad(newGame)
 
         // Remove all entities on load, just in case something wasn't cleaned up
-        Global.getSector().starSystems
-            .forEach { sys ->
-                sys.allEntities
-                    .filter { it.tags.any { it.startsWith(Constants.TROPHY_ENTITY_TAG_PREFIX) } }
-                    .toList()
-                    .forEach { sys.removeEntity(it) }
-            }
-
-
-        val settings =
-            Global.getSettings().getMergedJSONForMod("data/config/modSettings.json", MOD_ID)
-                .getJSONObject("wisp_trophy-planet")
-                .let { settings ->
-                    Settings(
-                        showStoredShips = settings.getBoolean("showShipsInStorage"),
-                        showShipsForSale = settings.getBoolean("showShipsForSale"),
-                        normalizingTargetSize = settings.getFloat("normalizingTargetSize"),
-                        normalizingAmount = settings.getFloat("normalizingAmount"),
-                        preNormalizationSpriteScaleModifier = settings.getFloat("preNormalizationSpriteScaleModifier")
-                    )
-                }
+        reload()
+        settings ?: return
 
         Global.getSector().addTransientListener(object : BaseCampaignEventListener(false) {
             override fun reportFleetJumped(
@@ -49,23 +75,9 @@ class LifecyclePlugin : BaseModPlugin() {
 
                 to?.destination?.starSystem ?: return
 
-                addScriptForSystem(to.destination.starSystem, settings)
+                addScriptForSystem(to.destination.starSystem, settings!!)
             }
         })
-
-        if ((Global.getSector().currentLocation as? StarSystemAPI) != null) {
-            addScriptForSystem(Global.getSector().currentLocation as StarSystemAPI, settings)
-        }
-    }
-
-    private fun addScriptForSystem(starSystemAPI: StarSystemAPI, settings: Settings) {
-        Misc.getMarketsInLocation(starSystemAPI)
-            .forEach { marketInsystem ->
-                Global.getSector().addTransientScript(TrophyPlanetScript().apply {
-                    this.market = marketInsystem
-                    this.settings = settings
-                })
-            }
     }
 
     override fun beforeGameSave() {
@@ -108,6 +120,7 @@ class LifecyclePlugin : BaseModPlugin() {
         val showShipsForSale: Boolean,
         val normalizingTargetSize: Float,
         val normalizingAmount: Float,
-        val preNormalizationSpriteScaleModifier: Float
+        val preNormalizationSpriteScaleModifier: Float,
+        val alphaMult: Float
     )
 }

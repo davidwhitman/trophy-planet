@@ -1,0 +1,2 @@
+command,class,tags,syntax,help
+OrbitalParade_Reload,org.wisp.trophyplanet.commands.ReloadSettings,"OrbitalParade,campaign",OrbitalParade_Reload,Reloads the settings for Orbital Parade.

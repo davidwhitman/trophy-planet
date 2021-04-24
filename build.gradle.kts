@@ -5,19 +5,19 @@ import org.jetbrains.kotlin.gradle.tasks.KotlinCompile
 
 object Variables {
     val starsectorDirectory = "C:/Program Files (x86)/Fractal Softworks/Starsector"
-    val modVersion = "1.0.0"
-    val jarFileName = "Trophy-Fleet.jar"
+    val modVersion = "0.0.3"
+    val jarFileName = "Orbital-Parade.jar"
 
-    val modId = "wisp_trophy-fleet"
-    val modName = "Trophy Fleet"
+    val modId = "wisp_orbital-parade"
+    val modName = "Orbital Parade"
     val author = "Wisp"
-    val description = "Mod description."
+    val description = "Display ships in your storage and for sale around planets/stations. Configurable in /data/config/modSettings.json."
     val gameVersion = "0.95a-RC15"
     val jars = arrayOf("jars/$jarFileName")
     val modPlugin = "org.wisp.trophyplanet.LifecyclePlugin"
     val isUtilityMod = false
-    val masterVersionFile = "https://raw.githubusercontent.com/githubname/githubrepo/master/$modId.version"
-    val modThreadId = "00000"
+    val masterVersionFile = "https://raw.githubusercontent.com/davidwhitman/trophy-planet/master/$modId.version"
+    val modThreadId = "21252"
 
     val modFolderName = modName.replace(" ", "-")
 
@@ -51,7 +51,7 @@ dependencies {
     compileOnly("org.jetbrains.kotlin:kotlin-stdlib-jdk7:$kotlinVersionInLazyLib")
 
     compileOnly(fileTree("$starsectorModDirectory/LazyLib/jars") { include("*.jar") })
-    //compileOnly(fileTree("$starsectorModDirectory/Console Commands/jars") { include("*.jar") })
+    compileOnly(fileTree("$starsectorModDirectory/Console Commands/jars") { include("*.jar") })
 
     // Starsector jars and dependencies
     implementation(fileTree(starsectorCoreDirectory) {
