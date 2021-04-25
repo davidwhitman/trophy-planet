@@ -8,4 +8,5 @@ object Constants {
     const val TROPHY_ENTITY_TAG_PREFIX = "wisp_trophyEntity"
 
     fun getTagForEntities(token: SectorEntityToken) = TROPHY_ENTITY_TAG_PREFIX + "_" + token.id
+    fun getTagForEntities(entityId: String) = TROPHY_ENTITY_TAG_PREFIX + "_" + entityId
 }

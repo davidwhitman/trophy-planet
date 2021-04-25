@@ -13,7 +13,7 @@ class PackedCircle(
     position: Vector2f,
     val isPulledToCenter: Boolean,
     val isPinned: Boolean,
-    val syncedEntity: Entity?
+    var syncedEntity: Entity?
 ) {
 //    var radiusSquared: Float = radius * radius
 //        private set

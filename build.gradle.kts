@@ -5,7 +5,7 @@ import org.jetbrains.kotlin.gradle.tasks.KotlinCompile
 
 object Variables {
     val starsectorDirectory = "C:/Program Files (x86)/Fractal Softworks/Starsector"
-    val modVersion = "0.0.3"
+    val modVersion = "0.0.4-alpha"
     val jarFileName = "Orbital-Parade.jar"
 
     val modId = "wisp_orbital-parade"
@@ -13,6 +13,7 @@ object Variables {
     val author = "Wisp"
     val description = "Display ships in your storage and for sale around planets/stations. Configurable in /data/config/modSettings.json."
     val gameVersion = "0.95a-RC15"
+    val questgiverVersion = "3.1.0"
     val jars = arrayOf("jars/$jarFileName")
     val modPlugin = "org.wisp.trophyplanet.LifecyclePlugin"
     val isUtilityMod = false

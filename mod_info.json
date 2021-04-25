@@ -4,7 +4,7 @@
     "name": "Orbital Parade",
     "author": "Wisp",
     "utility": "false",
-    "version": { "major":"0", "minor": "0", "patch": "3" },
+    "version": { "major":"0", "minor": "0", "patch": "4-alpha" },
     "description": "Display ships in your storage and for sale around planets/stations. Configurable in /data/config/modSettings.json.",
     "gameVersion": "0.95a-RC15",
     "jars":["jars/Orbital-Parade.jar"],

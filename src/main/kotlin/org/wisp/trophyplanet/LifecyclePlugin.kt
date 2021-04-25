@@ -5,8 +5,10 @@ import com.fs.starfarer.api.Global
 import com.fs.starfarer.api.campaign.*
 import com.fs.starfarer.api.util.Misc
 import com.thoughtworks.xstream.XStream
-import org.lazywizard.lazylib.ext.json.getFloat
+import org.lwjgl.input.Keyboard
 import org.wisp.trophyplanet.Constants.MOD_ID
+import org.wisp.trophyplanet.lib.tryGetBoolean
+import org.wisp.trophyplanet.lib.tryGetFloat
 
 class LifecyclePlugin : BaseModPlugin() {
     private val entitiestoKeepAcrossSavingProcess = mutableListOf<Pair<StarSystemAPI, SectorEntityToken>>()
@@ -29,17 +31,22 @@ class LifecyclePlugin : BaseModPlugin() {
                     .getJSONObject("wisp_trophy-planet")
                     .let { settings ->
                         Settings(
-                            showStoredShips = settings.getBoolean("showShipsInStorage"),
-                            showShipsForSale = settings.getBoolean("showShipsForSale"),
-                            normalizingTargetSize = settings.getFloat("normalizingTargetSize"),
-                            normalizingAmount = settings.getFloat("normalizingAmount"),
-                            preNormalizationSpriteScaleModifier = settings.getFloat("preNormalizationSpriteScaleModifier"),
-                            alphaMult = settings.getFloat("alphaMult"),
-                            shouldFadeOnZoomIn = settings.getBoolean("shouldFadeOnZoomIn")
+                            showStoredShips = settings.tryGetBoolean("showShipsInStorage") { true },
+                            showShipsForSale = settings.tryGetBoolean("showShipsForSale") { true },
+                            normalizingTargetSize = settings.tryGetFloat("normalizingTargetSize") { 20f },
+                            normalizingAmount = settings.tryGetFloat("normalizingAmount") { 0.8f },
+                            preNormalizationSpriteScaleModifier = settings.tryGetFloat("preNormalizationSpriteScaleModifier") { 0.5f },
+                            alphaMult = settings.tryGetFloat("alphaMult") { 0.2f },
+                            shouldFadeOnZoomIn = settings.tryGetBoolean("shouldFadeOnZoomIn") { true },
+                            toggleHotkey = kotlin.runCatching { Keyboard.getKeyIndex(settings.getString("toggleHotkey")) }
+                                .getOrDefault(Keyboard.KEY_P)
                         )
                     }
 
-            Global.getSector().removeTransientScriptsOfClass(TrophyPlanetScript::class.java)
+            Global.getSector().removeTransientScriptsOfClass(
+                TrophyPlanetScript::
+                class.java
+            )
 
             if ((Global.getSector().currentLocation as? StarSystemAPI) != null) {
                 addScriptForSystem(Global.getSector().currentLocation as StarSystemAPI, settings!!)
@@ -49,10 +56,12 @@ class LifecyclePlugin : BaseModPlugin() {
         private fun addScriptForSystem(starSystemAPI: StarSystemAPI, settings: Settings) {
             Misc.getMarketsInLocation(starSystemAPI)
                 .forEach { marketInsystem ->
-                    Global.getSector().addTransientScript(TrophyPlanetScript().apply {
+                    val script = TrophyPlanetScript().apply {
                         this.market = marketInsystem
                         this.settings = settings
-                    })
+                    }
+                    Global.getSector().addTransientScript(script)
+                    Global.getSector().listenerManager.addListener(script, true)
                 }
         }
     }
@@ -123,6 +132,7 @@ class LifecyclePlugin : BaseModPlugin() {
         val normalizingAmount: Float,
         val preNormalizationSpriteScaleModifier: Float,
         val alphaMult: Float,
-        val shouldFadeOnZoomIn: Boolean
+        val shouldFadeOnZoomIn: Boolean,
+        val toggleHotkey: Int
     )
 }
