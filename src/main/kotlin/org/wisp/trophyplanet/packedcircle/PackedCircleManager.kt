@@ -26,7 +26,7 @@ class PackedCircleManager(
         // algorithms - it's (O)logN^2 so use increase at your own risk!
         // Play with these numbers - see what works best for your project
         const val numberOfCenteringPasses = 1
-        const val numberOfCollisionPasses = 3
+        const val numberOfCollisionPasses = 1
     }
 
     var isCenterPullActive = true

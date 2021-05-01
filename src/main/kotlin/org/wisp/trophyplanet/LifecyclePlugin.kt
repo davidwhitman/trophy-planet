@@ -35,7 +35,8 @@ class LifecyclePlugin : BaseModPlugin() {
                             showShipsForSale = settings.tryGetBoolean("showShipsForSale") { true },
                             normalizingTargetSize = settings.tryGetFloat("normalizingTargetSize") { 20f },
                             normalizingAmount = settings.tryGetFloat("normalizingAmount") { 0.8f },
-                            preNormalizationSpriteScaleModifier = settings.tryGetFloat("preNormalizationSpriteScaleModifier") { 0.5f },
+                            storedSpriteScaleModifier = settings.tryGetFloat("storedSpriteScaleModifier") { 0.5f },
+                            forSaleSpriteScaleModifier = settings.tryGetFloat("forSaleSpriteScaleModifier") { 0.8f },
                             alphaMult = settings.tryGetFloat("alphaMult") { 0.2f },
                             shouldFadeOnZoomIn = settings.tryGetBoolean("shouldFadeOnZoomIn") { true },
                             toggleHotkey = kotlin.runCatching { Keyboard.getKeyIndex(settings.getString("toggleHotkey")) }
@@ -130,7 +131,8 @@ class LifecyclePlugin : BaseModPlugin() {
         val showShipsForSale: Boolean,
         val normalizingTargetSize: Float,
         val normalizingAmount: Float,
-        val preNormalizationSpriteScaleModifier: Float,
+        val storedSpriteScaleModifier: Float,
+        val forSaleSpriteScaleModifier: Float,
         val alphaMult: Float,
         val shouldFadeOnZoomIn: Boolean,
         val toggleHotkey: Int

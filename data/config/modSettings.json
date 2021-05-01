@@ -2,8 +2,10 @@
   "wisp_trophy-planet": {
     "showShipsInStorage": true,
     "showShipsForSale": true,
-    # The scale of the sprite prior to any normalization. Default=0.5
-    "preNormalizationSpriteScaleModifier": 0.5,
+    # The scale of sprites you own prior to any normalization. Default=0.5
+    "storedSpriteScaleModifier": 0.5,
+    # The scale of the sprite for sale prior to any normalization. Default=0.8
+    "forSaleSpriteScaleModifier": 0.8,
     # A higher number makes smaller ships larger and larger ships smaller.
     # 0 for no normalization. Default=0.8
     "normalizingAmount": 0.80,

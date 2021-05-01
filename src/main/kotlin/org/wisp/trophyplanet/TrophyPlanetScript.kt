@@ -12,6 +12,7 @@ import com.fs.starfarer.api.campaign.listeners.CampaignInputListener
 import com.fs.starfarer.api.fleet.FleetMemberAPI
 import com.fs.starfarer.api.graphics.SpriteAPI
 import com.fs.starfarer.api.impl.campaign.ids.Submarkets
+import com.fs.starfarer.api.impl.campaign.ids.Tags
 import com.fs.starfarer.api.input.InputEventAPI
 import com.fs.starfarer.api.ui.HintPanelAPI
 import com.fs.starfarer.api.ui.TooltipMakerAPI
@@ -38,7 +39,19 @@ class TrophyPlanetScript : EveryFrameScriptWithCleanup, CampaignInputListener {
 
     private var packedCircleManager: PackedCircleManager? = null
     private var isHidden = false
-    private val doesEntityExistMap = mutableMapOf<String, Boolean>()
+
+    /**
+     * The entities created by this mod that are currently extant.
+     */
+    private val trackedEntitiesInSystem = mutableMapOf<String, SectorEntityToken>()
+
+    /**
+     * Stations, planets, mirrors, etc.
+     */
+    private val permanentEntitiesToAvoid: List<SectorEntityToken>? by lazy {
+        market?.containingLocation?.getEntitiesWithTag(Tags.STATION).orEmpty() +
+                market?.containingLocation?.planets.orEmpty()
+    }
 
     override fun isDone(): Boolean = done
 
@@ -46,22 +59,24 @@ class TrophyPlanetScript : EveryFrameScriptWithCleanup, CampaignInputListener {
     override fun runWhilePaused() = true
 
     override fun advance(amount: Float) {
-        if (isDone) {
+        if (isDone || market?.primaryEntity?.isExpired != false) {
             cleanup()
             return
         }
 
-        val planetInner = market?.primaryEntity ?: return
-        val settingsInner = settings ?: return
-        if (market?.primaryEntity?.isVisibleToPlayerFleet == false) return
-
         // If player is not in this script's planet's system, destroy self.
-        if (Global.getSector().currentLocation != planetInner.containingLocation) {
+        if (Global.getSector().currentLocation != market?.primaryEntity?.containingLocation) {
             cleanup()
             done = true
             Global.getSector().removeTransientScript(this)
             return
         }
+
+        val planetInner = market?.primaryEntity ?: return
+        val settingsInner = settings ?: return
+        permanentEntitiesToAvoid ?: return
+
+        if (market?.primaryEntity?.isVisibleToPlayerFleet == false) return
 
         if (!settingsInner.showShipsForSale && !settingsInner.showStoredShips) {
             return
@@ -83,9 +98,9 @@ class TrophyPlanetScript : EveryFrameScriptWithCleanup, CampaignInputListener {
 
         val packedCircleManagerInner = packedCircleManager!!
 
-        val circlesToShow = mutableListOf<CircleData>()
+        val circlesToShow = mutableListOf<EntityData>()
 
-        circlesToShow += CircleData(
+        circlesToShow += EntityData(
             id = planetCircleId,
             radius = planetInner.radius,
             kineticsInfo = KineticsInfo.Pinned(
@@ -106,12 +121,16 @@ class TrophyPlanetScript : EveryFrameScriptWithCleanup, CampaignInputListener {
                     .map { ship ->
                         val sprite = Global.getSettings().getSprite(ship.hullSpec.spriteName)
                         val radius = hypot(sprite.width, sprite.height) / 2
-                        CircleData(
+                        EntityData(
                             id = ship.id,
                             customEntityInfo = CustomEntityInfo(
                                 displayName = ship.shipName,
                                 factionId = market.faction?.id,
-                                scalingFactor = getScalingFactor(radius, settingsInner),
+                                scalingFactor = getScalingFactor(
+                                    radius,
+                                    settingsInner,
+                                    settingsInner.storedSpriteScaleModifier
+                                ),
                                 spriteToShow = sprite,
                                 tooltipMaker = { tooltip, isExpanded ->
                                     if (!isHidden) {
@@ -165,12 +184,16 @@ class TrophyPlanetScript : EveryFrameScriptWithCleanup, CampaignInputListener {
                                 }
                             }
                         val radius = hypot(sprite.width, sprite.height) / 2
-                        CircleData(
+                        EntityData(
                             id = ship.id,
                             customEntityInfo = CustomEntityInfo(
                                 displayName = ship.hullSpec.nameWithDesignationWithDashClass,
                                 factionId = market.faction?.id,
-                                scalingFactor = getScalingFactor(radius, settingsInner),
+                                scalingFactor = getScalingFactor(
+                                    radius,
+                                    settingsInner,
+                                    settingsInner.forSaleSpriteScaleModifier
+                                ),
                                 spriteToShow = sprite,
                                 tooltipMaker = { tooltip, isExpanded ->
                                     if (!isHidden) {
@@ -191,26 +214,27 @@ class TrophyPlanetScript : EveryFrameScriptWithCleanup, CampaignInputListener {
             }
         }
 
-        // Fleets in system
+        // Fleets and stations in system
         if (planetInner.starSystem != null) {
-            circlesToShow += planetInner.starSystem.fleets.map {
-                CircleData(
-                    id = it.id,
-                    radius = it.radius,
-                    kineticsInfo = KineticsInfo.Pinned(
-                        position = it.location
+            circlesToShow += (planetInner.starSystem.fleets + permanentEntitiesToAvoid!!)
+                .map {
+                    EntityData(
+                        id = it.id,
+                        radius = it.radius,
+                        kineticsInfo = KineticsInfo.Pinned(
+                            position = it.location
+                        )
                     )
-                )
-            }
+                }
         }
 
         setShipsAroundMarketLocation(
-            circles = circlesToShow,
+            entities = circlesToShow,
             packedCircleManager = packedCircleManagerInner,
             marketLocation = planetInner
         )
 
-        if (!isHidden) {
+        if (!isHidden && !Global.getSector().isPaused) {
             // Keeps desired location synced, since planet will be orbiting and ships should follow it
             packedCircleManagerInner.desiredTarget = planetInner.location
             packedCircleManagerInner.updatePositions()
@@ -256,21 +280,21 @@ class TrophyPlanetScript : EveryFrameScriptWithCleanup, CampaignInputListener {
     }) != false
 
     private fun setShipsAroundMarketLocation(
-        circles: List<CircleData>,
+        entities: List<EntityData>,
         packedCircleManager: PackedCircleManager,
         marketLocation: SectorEntityToken
     ) {
         val circleKeys = packedCircleManager.circles.keys
 
         // Create entities and circles for each stored ship if they don't exist already
-        val circlesToAddSpritesFor = circles//.filter { it.id !in circleKeys }
+        val circlesToAddSpritesFor = entities//.filter { it.id !in circleKeys }
         circlesToAddSpritesFor.forEachIndexed { index, circleData ->
-            val shouldShowEntitiesThatWereHidden = doesEntityExistMap[circleData.id] != true && !isHidden
+            val shouldShowEntitiesThatWereHidden = trackedEntitiesInSystem[circleData.id] == null && !isHidden
+
             val customEntity =
                 if (circleData.customEntityInfo != null
                     && shouldShowEntitiesThatWereHidden
                 ) {
-                    doesEntityExistMap[circleData.id] = true
                     marketLocation.containingLocation.addCustomEntity(
                         circleData.id,
                         circleData.customEntityInfo.displayName,
@@ -288,6 +312,7 @@ class TrophyPlanetScript : EveryFrameScriptWithCleanup, CampaignInputListener {
                                 this.addSprite(circleData.customEntityInfo.spriteToShow)
                                 this.tooltipMaker = circleData.customEntityInfo.tooltipMaker
                             }
+                            trackedEntitiesInSystem[circleData.id] = this
                         }
                 } else {
                     null
@@ -317,28 +342,28 @@ class TrophyPlanetScript : EveryFrameScriptWithCleanup, CampaignInputListener {
 
         }
 
-        // Update entities that are already present
-        val circlesToUpdate = circles
+        // Update entities that are already being shown
+        val circlesToUpdate = entities
             .filter { it.id in circleKeys && it.customEntityInfo != null }
         circlesToUpdate.forEach { data ->
-            val entity = marketLocation.containingLocation.getEntityById(data.id)
+            val entity = trackedEntitiesInSystem[data.id]
             (entity?.customPlugin as? DummyFleetEntity)?.spriteAlpha =
                 data.customEntityInfo?.spriteToShow?.alphaMult ?: 1f
 
             if (isHidden && entity != null) {
                 marketLocation.containingLocation?.removeEntity(entity)
-                doesEntityExistMap[entity.id] = false
+                trackedEntitiesInSystem.remove(entity.id)
             }
         }
 
         // Remove any circles and entities whose ships are no longer in storage
-        val shipIds = circles.map { it.id }
+        val shipIds = entities.map { it.id }
         val entityIdsToRemove = circleKeys - shipIds
         entityIdsToRemove.forEach { shipId ->
             if (shipId == planetCircleId) return@forEach
 
             packedCircleManager.circles.remove(shipId)
-            marketLocation.containingLocation.removeEntity(marketLocation.containingLocation.getEntityById(shipId))
+            marketLocation.containingLocation.removeEntity(trackedEntitiesInSystem[shipId])
         }
     }
 
@@ -367,18 +392,21 @@ class TrophyPlanetScript : EveryFrameScriptWithCleanup, CampaignInputListener {
     }
 
 
-    private fun getScalingFactor(radius: Float, settings: LifecyclePlugin.Settings): Float {
+    private fun getScalingFactor(
+        radius: Float,
+        settings: LifecyclePlugin.Settings,
+        preNormalizationScalingFactor: Float
+    ): Float {
         val normalizingTargetSize = settings.normalizingTargetSize
         val normalizingAmount = settings.normalizingAmount
-        val preNormalizationSpriteScaleModifier = settings.preNormalizationSpriteScaleModifier
-        val adjustedRadius = preNormalizationSpriteScaleModifier * radius
+        val adjustedRadius = preNormalizationScalingFactor * radius
 
         return (((normalizingTargetSize * normalizingAmount) +
                 adjustedRadius) / (2f + normalizingAmount).coerceAtLeast(0.01f))
             .div(adjustedRadius)
     }
 
-    private class CircleData(
+    private data class EntityData(
         val id: String,
         val radius: Float,
         val kineticsInfo: KineticsInfo,
@@ -388,14 +416,14 @@ class TrophyPlanetScript : EveryFrameScriptWithCleanup, CampaignInputListener {
     }
 
     private sealed class KineticsInfo {
-        class Pinned(
+        data class Pinned(
             val position: Vector2f
         ) : KineticsInfo()
 
         class Unpinned : KineticsInfo()
     }
 
-    private class CustomEntityInfo(
+    private data class CustomEntityInfo(
         val spriteToShow: SpriteAPI,
         val scalingFactor: Float,
         val displayName: String,
