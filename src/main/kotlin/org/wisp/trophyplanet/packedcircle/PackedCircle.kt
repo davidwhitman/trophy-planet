@@ -7,10 +7,10 @@ import org.lwjgl.util.vector.Vector2f
 /**
  * @param entity An optional entity whose location will be kept in sync with the circle
  */
-class PackedCircle(
+data class PackedCircle(
     val id: String,
-    radius: Float,
-    position: Vector2f,
+    var radius: Float,
+    var position: Vector2f,
     val isPulledToCenter: Boolean,
     val isPinned: Boolean,
     var syncedEntity: Entity?
@@ -20,16 +20,16 @@ class PackedCircle(
     var originalRadius: Float = radius
         private set
 
-    var radius: Float = radius
-        set(value) {
-            field = value
-//            radiusSquared = value * value
-            originalRadius = value
-        }
+//    var radius: Float = radius
+//        set(value) {
+//            field = value
+////            radiusSquared = value * value
+////            originalRadius = value
+//        }
 
 //    var previousPosition: Vector2f = position
 
-    val position: Vector2f = position
+//    val position: Vector2f = position
 //        set(value) {
 //            previousPosition = this.position
 //            field = value.copy()

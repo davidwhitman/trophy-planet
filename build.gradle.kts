@@ -1,5 +1,3 @@
-import org.jetbrains.kotlin.gradle.tasks.KotlinCompile
-
 //////////////////////
 // VARIABLES TO CHANGE
 
@@ -11,7 +9,8 @@ object Variables {
     val modId = "wisp_orbital-parade"
     val modName = "Orbital Parade"
     val author = "Wisp"
-    val description = "Display ships in your storage and for sale around planets/stations. Configurable in /data/config/modSettings.json."
+    val description =
+        "Display ships in your storage and for sale around planets/stations. Configurable in /data/config/modSettings.json."
     val gameVersion = "0.95a-RC15"
     val questgiverVersion = "3.1.0"
     val jars = arrayOf("jars/$jarFileName")
@@ -68,6 +67,15 @@ dependencies {
             "lwjgl_util.jar"
         )
     })
+
+    // Testing
+    val junitPlatformVersion = "5.3.1"
+
+    testImplementation(fileTree("$starsectorModDirectory/LazyLib/jars") { include("*.jar") })
+    testImplementation("org.jetbrains.kotlin:kotlin-stdlib:$kotlinVersionInLazyLib")
+    testImplementation("org.jetbrains.kotlin:kotlin-stdlib-jdk7:$kotlinVersionInLazyLib")
+    testImplementation("org.junit.jupiter:junit-jupiter-api:$junitPlatformVersion")
+    testRuntimeOnly("org.junit.jupiter:junit-jupiter-engine:$junitPlatformVersion")
 }
 
 tasks {
@@ -163,6 +171,7 @@ tasks {
 }
 
 // Compile to Java 6 bytecode so that Starsector can use it
-tasks.withType<KotlinCompile> {
-    kotlinOptions.jvmTarget = "1.6"
+tasks
+tasks.withType<Test> {
+    useJUnitPlatform()
 }

@@ -4,7 +4,6 @@ import org.lazywizard.lazylib.MathUtils
 import org.lwjgl.util.Rectangle
 import org.lwjgl.util.vector.Vector2f
 import kotlin.math.sqrt
-import kotlin.random.Random
 
 /**
  * https://github.com/snorpey/circlepacker/blob/master/src/PackedCircleManager.js
@@ -29,7 +28,7 @@ class PackedCircleManager(
         const val numberOfCollisionPasses = 1
     }
 
-    var isCenterPullActive = true
+    var isPullTowardTargetActive = true
 
     /**
      * Force a certain circle to be the 'draggedCircle'.
@@ -64,7 +63,7 @@ class PackedCircleManager(
 
         val desiredTargetInner = this.desiredTarget
 
-        if (desiredTargetInner != null && this.isCenterPullActive) {
+        if (desiredTargetInner != null && this.isPullTowardTargetActive) {
             this.pushAllCirclesTowardTarget(desiredTargetInner)
         }
 
@@ -85,7 +84,7 @@ class PackedCircleManager(
     fun pushAllCirclesTowardTarget(target: Vector2f) {
         val point = Vector2f()
 
-        for (n in (0 until PackedCircleManager.numberOfCenteringPasses)) {
+        for (n in (0 until numberOfCenteringPasses)) {
             for (circle in circles.values) {
                 if (circle.isPulledToCenter) {
                     // Kinematic circles can't be pushed around.
@@ -114,9 +113,20 @@ class PackedCircleManager(
     fun handleCollisions() {
         val force = Vector2f()
         val circleEntries = circles.values
+        val boundsInner = bounds
 
         for (n in (0 until numberOfCollisionPasses)) {
             for (circleA in circleEntries) {
+                if (boundsInner != null
+                    && boundsInner.contains(circleA.position.x.toInt(), circleA.position.y.toInt())
+//                    (circleA.position.x < boundsInner.left
+//                            || circleA.position.x > boundsInner.right
+//                            || circleA.position.y < boundsInner.bottom
+//                            || circleA.position.y > boundsInner.top)
+                ) {
+                    continue
+                }
+
                 // Kinematic circles can't be pushed around.
                 val isCircleAKinematic = (circleA == draggedCircle) || circleA.isPinned
 
@@ -137,7 +147,7 @@ class PackedCircleManager(
 
                     // Add a little bit of distance to create an inverse force
                     if (d == 0f) {
-                        d = Random.nextFloat()
+                        d = 0.5f
                     }
 
                     if (d < (r * r) - 0.02f) {
@@ -147,9 +157,9 @@ class PackedCircleManager(
                         if (force.length() > 0f) {
                             force.normalise()
                         } else {
-                            // If force is 0, add a random force
-                            force.x = Random.nextFloat()
-                            force.y = Random.nextFloat()
+                            // If force is 0, add a force
+                            force.x = 0.5f
+                            force.y = 0.5f
                         }
 
                         val inverseForce = (r - sqrt(d)) * 0.5f
@@ -217,13 +227,13 @@ class PackedCircleManager(
 }
 
 val Rectangle.right: Int
-    get() = this.x + this.width
+    get() = this.x + (this.width / 2)
 
 val Rectangle.left: Int
-    get() = this.x
+    get() = this.x - (this.width / 2)
 
 val Rectangle.bottom: Int
-    get() = this.y - this.height
+    get() = this.y - (this.height / 2)
 
 val Rectangle.top: Int
-    get() = this.y// - this.height
+    get() = this.y + (this.height / 2)

@@ -45,6 +45,10 @@ class TrophyPlanetScript : EveryFrameScriptWithCleanup, CampaignInputListener {
      */
     private val trackedEntitiesInSystem = mutableMapOf<String, SectorEntityToken>()
 
+    private val spriteInfoCache = mutableMapOf<String, SpriteInfo>()
+
+    data class SpriteInfo(val spriteAPI: SpriteAPI, val radius: Float)
+
     /**
      * Stations, planets, mirrors, etc.
      */
@@ -59,16 +63,12 @@ class TrophyPlanetScript : EveryFrameScriptWithCleanup, CampaignInputListener {
     override fun runWhilePaused() = true
 
     override fun advance(amount: Float) {
-        if (isDone || market?.primaryEntity?.isExpired != false) {
+        // If script is done, market's entity is gone, or player is not in this script's planet's system, destroy self.
+        if (isDone
+            || market?.primaryEntity?.isExpired != false
+            || Global.getSector().currentLocation != market?.primaryEntity?.containingLocation
+        ) {
             cleanup()
-            return
-        }
-
-        // If player is not in this script's planet's system, destroy self.
-        if (Global.getSector().currentLocation != market?.primaryEntity?.containingLocation) {
-            cleanup()
-            done = true
-            Global.getSector().removeTransientScript(this)
             return
         }
 
@@ -83,6 +83,7 @@ class TrophyPlanetScript : EveryFrameScriptWithCleanup, CampaignInputListener {
         }
 
         inputCooldown = (inputCooldown - amount).coerceAtLeast(-1f)
+        spriteInfoCache.clear()
 
         if (!hasScriptUpdatedMarkets) {
             planetInner.market?.submarketsCopy?.forEach { it.plugin?.updateCargoPrePlayerInteraction() }
@@ -108,40 +109,67 @@ class TrophyPlanetScript : EveryFrameScriptWithCleanup, CampaignInputListener {
             )
         )
 
+        val shipAverageRadius =
+            planetInner.market?.submarketsCopy
+                ?.flatMap { submarket ->
+                    submarket.cargo?.mothballedShips?.membersListCopy?.map { submarket to it } ?: emptyList()
+                }
+                ?.map { (submarket, ship) ->
+                    getOrCalculateCachedSpriteInfo(
+                        submarket,
+                        ship.hullSpec.spriteName
+                    ).radius
+                }
+                ?.average()?.toFloat() ?: 100f
+
         // Personal ships
         if (settingsInner.showStoredShips) {
-            val market =
+            val submarket =
                 planetInner.market?.submarketsCopy?.firstOrNull { it.specId == Submarkets.SUBMARKET_STORAGE }
             val mothballedShips =
-                market
+                submarket
                     ?.cargo?.mothballedShips
 
             if (mothballedShips?.numMembers != null && mothballedShips.numMembers > 0) {
-                circlesToShow += mothballedShips.membersListCopy
-                    .map { ship ->
-                        val sprite = Global.getSettings().getSprite(ship.hullSpec.spriteName)
-                        val radius = hypot(sprite.width, sprite.height) / 2
+                circlesToShow += mothballedShips.membersListCopy.let { ships ->
+                    ships.map { ship ->
+                        val cachedSpriteInfo = getOrCalculateCachedSpriteInfo(submarket, ship.hullSpec.spriteName)
+                        val scalingFactor = getScalingFactor(
+                            cachedSpriteInfo.radius,
+                            settingsInner,
+                            shipAverageRadius,
+                            settingsInner.storedSpriteScaleModifier
+                        )
+                        val spriteToShow = cachedSpriteInfo.spriteAPI
+                            .apply {
+                                this.alphaMult = when {
+                                    settingsInner.shouldFadeOnZoomInForStorage -> {
+                                        calculateFadeMultiplierBasedOnZoom(
+                                            settingsInner,
+                                            kotlin.runCatching { Global.getSector()?.campaignUI?.zoomFactor ?: 1f }
+                                                .getOrDefault(1f))
+                                    }
+                                    else -> 1f
+                                }
+                            }
                         EntityData(
                             id = ship.id,
                             customEntityInfo = CustomEntityInfo(
                                 displayName = ship.shipName,
-                                factionId = market.faction?.id,
-                                scalingFactor = getScalingFactor(
-                                    radius,
-                                    settingsInner,
-                                    settingsInner.storedSpriteScaleModifier
-                                ),
-                                spriteToShow = sprite,
+                                factionId = submarket.faction?.id,
+                                scalingFactor = scalingFactor,
+                                spriteToShow = spriteToShow,
                                 tooltipMaker = { tooltip, isExpanded ->
                                     if (!isHidden) {
-                                        tooltip.addPara("In ${market.nameOneLine}", market.faction.color, 10f)
+                                        tooltip.addPara("In ${submarket.nameOneLine}", submarket.faction.color, 10f)
                                     }
                                 }
                             ),
-                            radius = radius,
+                            radius = cachedSpriteInfo.radius,
                             kineticsInfo = KineticsInfo.Unpinned()
                         )
                     }
+                }
             }
         }
 
@@ -161,56 +189,51 @@ class TrophyPlanetScript : EveryFrameScriptWithCleanup, CampaignInputListener {
                 } ?: emptyList()
 
             if (marketShips.count() > 0) {
-                circlesToShow += marketShips
-                    .map { (market, ship) ->
-                        val sprite = Global.getSettings().getSprite(ship.hullSpec.spriteName)
+                circlesToShow += marketShips.let { marketsAndShips ->
+                    marketsAndShips.map { (submarket, ship) ->
+                        val cachedSpriteInfo = getOrCalculateCachedSpriteInfo(submarket, ship.hullSpec.spriteName)
+                        val sprite = cachedSpriteInfo.spriteAPI
                             .apply {
-                                val zoomMult = kotlin.runCatching { Global.getSector()?.campaignUI?.zoomFactor ?: 1f }
-                                    .getOrDefault(1f)
                                 this.alphaMult = when {
-                                    settingsInner.shouldFadeOnZoomIn -> {
-                                        val zoomedIn = 0.5f
-                                        val zoomedOut = 3.0f
-                                        // Thank you AlexAtheos for putting me on the right path
-                                        // y = y1 + ((y2 - y1)/(x2 - x1))*(x - x1)
-                                        val mult =
-                                            kotlin.runCatching { 1f + ((settingsInner.alphaMult - 1f) / (zoomedOut - zoomedIn)) * (zoomMult - zoomedIn) }
-                                                .getOrDefault(settingsInner.alphaMult)
-                                        mult
+                                    settingsInner.shouldFadeOnZoomInForSale -> {
+                                        calculateFadeMultiplierBasedOnZoom(
+                                            settingsInner,
+                                            kotlin.runCatching { Global.getSector()?.campaignUI?.zoomFactor ?: 1f }
+                                                .getOrDefault(1f))
                                     }
-                                    else -> {
-                                        zoomMult
-                                    }
+                                    else -> 1f
                                 }
                             }
-                        val radius = hypot(sprite.width, sprite.height) / 2
+                        val scalingFactor = getScalingFactor(
+                            radius = cachedSpriteInfo.radius,
+                            settings = settingsInner,
+                            averageRadius = shipAverageRadius,
+                            scalingFactor = settingsInner.forSaleSpriteScaleModifier
+                        )
                         EntityData(
                             id = ship.id,
                             customEntityInfo = CustomEntityInfo(
                                 displayName = ship.hullSpec.nameWithDesignationWithDashClass,
-                                factionId = market.faction?.id,
-                                scalingFactor = getScalingFactor(
-                                    radius,
-                                    settingsInner,
-                                    settingsInner.forSaleSpriteScaleModifier
-                                ),
+                                factionId = submarket.faction?.id,
+                                scalingFactor = scalingFactor,
                                 spriteToShow = sprite,
                                 tooltipMaker = { tooltip, isExpanded ->
                                     if (!isHidden) {
                                         tooltip.addPara(
                                             "Available from the %s for %s credits.",
                                             10f,
-                                            arrayOf(market.faction.color, Misc.getHighlightColor()),
-                                            market.nameOneLine,
-                                            Misc.getWithDGS(ship.baseBuyValue + (ship.baseBuyValue * market.tariff))
+                                            arrayOf(submarket.faction.color, Misc.getHighlightColor()),
+                                            submarket.nameOneLine,
+                                            Misc.getWithDGS(ship.baseBuyValue + (ship.baseBuyValue * submarket.tariff))
                                         )
                                     }
                                 }
                             ),
-                            radius = radius,
+                            radius = cachedSpriteInfo.radius,
                             kineticsInfo = KineticsInfo.Unpinned()
                         )
                     }
+                }
             }
         }
 
@@ -239,6 +262,20 @@ class TrophyPlanetScript : EveryFrameScriptWithCleanup, CampaignInputListener {
             packedCircleManagerInner.desiredTarget = planetInner.location
             packedCircleManagerInner.updatePositions()
         }
+    }
+
+    private fun calculateFadeMultiplierBasedOnZoom(
+        settingsInner: LifecyclePlugin.Settings,
+        zoomMult: Float
+    ): Float {
+        val zoomedIn = 0.5f
+        val zoomedOut = 3.0f
+        // Thank you AlexAtheos for putting me on the right path
+        // y = y1 + ((y2 - y1)/(x2 - x1))*(x - x1)
+        val mult =
+            kotlin.runCatching { 1f + ((settingsInner.alphaMult - 1f) / (zoomedOut - zoomedIn)) * (zoomMult - zoomedIn) }
+                .getOrDefault(settingsInner.alphaMult)
+        return mult
     }
 
     var inputCooldown = 0f
@@ -388,22 +425,40 @@ class TrophyPlanetScript : EveryFrameScriptWithCleanup, CampaignInputListener {
         packedCircleManager?.circles?.clear()
         packedCircleManager = null
         market = null
+        spriteInfoCache.clear()
         done = true
+
+        Global.getSector().removeTransientScript(this)
     }
 
 
     private fun getScalingFactor(
         radius: Float,
         settings: LifecyclePlugin.Settings,
-        preNormalizationScalingFactor: Float
+        averageRadius: Float,
+        scalingFactor: Float
     ): Float {
-        val normalizingTargetSize = settings.normalizingTargetSize
+        val normalizingTargetSize = averageRadius
         val normalizingAmount = settings.normalizingAmount
-        val adjustedRadius = preNormalizationScalingFactor * radius
 
-        return (((normalizingTargetSize * normalizingAmount) +
-                adjustedRadius) / (2f + normalizingAmount).coerceAtLeast(0.01f))
-            .div(adjustedRadius)
+        val weightedTargetRadius =
+            (normalizingTargetSize * normalizingAmount) + (radius * (1 - normalizingAmount))
+
+        return (weightedTargetRadius * scalingFactor) / radius
+    }
+
+    private fun getOrCalculateCachedSpriteInfo(submarket: SubmarketAPI, spriteName: String): SpriteInfo {
+        val key = (submarket.spec?.id ?: "") + spriteName
+
+        if (!spriteInfoCache.containsKey(key)) {
+            val sprite = Global.getSettings().getSprite(spriteName)
+            spriteInfoCache[key] = SpriteInfo(
+                spriteAPI = sprite,
+                radius = hypot(sprite.width, sprite.height) / 2
+            )
+        }
+
+        return spriteInfoCache[key]!!
     }
 
     private data class EntityData(
