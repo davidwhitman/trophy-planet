@@ -6,7 +6,7 @@
     "utility": "false",
     "version": { "major":"0", "minor": "0", "patch": "4-alpha" },
     "description": "Display ships in your storage and for sale around planets/stations. Configurable in /data/config/modSettings.json.",
-    "gameVersion": "0.95a-RC15",
+    "gameVersion": "0.95.1a-RC6",
     "jars":["jars/Orbital-Parade.jar"],
     "modPlugin":"org.wisp.trophyplanet.LifecyclePlugin",
     "dependencies": [

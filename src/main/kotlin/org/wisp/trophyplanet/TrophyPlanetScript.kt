@@ -14,10 +14,12 @@ import com.fs.starfarer.api.graphics.SpriteAPI
 import com.fs.starfarer.api.impl.campaign.ids.Submarkets
 import com.fs.starfarer.api.impl.campaign.ids.Tags
 import com.fs.starfarer.api.input.InputEventAPI
+import com.fs.starfarer.api.loading.HullModSpecAPI
 import com.fs.starfarer.api.ui.HintPanelAPI
 import com.fs.starfarer.api.ui.TooltipMakerAPI
 import com.fs.starfarer.api.util.Misc
 import org.lwjgl.util.vector.Vector2f
+import org.wisp.trophyplanet.lib.asList
 import org.wisp.trophyplanet.packedcircle.PackedCircle
 import org.wisp.trophyplanet.packedcircle.PackedCircleManager
 import kotlin.math.hypot
@@ -39,6 +41,15 @@ class TrophyPlanetScript : EveryFrameScriptWithCleanup, CampaignInputListener {
 
     private var packedCircleManager: PackedCircleManager? = null
     private var isHidden = false
+
+    val recalculationPeriod = 5000f
+    var timeSinceLastRecalculation = 0f
+    var spriteRadii: List<Float>? = emptyList()
+    val desiredMinShipRadius = 60f
+    val desiredMaxShipRadius = 120f
+    var minShipRadius: Float = 0f
+    var maxShipRadius: Float = 0f
+    var shipAverageRadius: Float = 0f
 
     /**
      * The entities created by this mod that are currently extant.
@@ -63,6 +74,8 @@ class TrophyPlanetScript : EveryFrameScriptWithCleanup, CampaignInputListener {
     override fun runWhilePaused() = true
 
     override fun advance(amount: Float) {
+        timeSinceLastRecalculation -= recalculationPeriod
+
         // If script is done, market's entity is gone, or player is not in this script's planet's system, destroy self.
         if (isDone
             || market?.primaryEntity?.isExpired != false
@@ -80,6 +93,11 @@ class TrophyPlanetScript : EveryFrameScriptWithCleanup, CampaignInputListener {
 
         if (!settingsInner.showShipsForSale && !settingsInner.showStoredShips) {
             return
+        }
+
+        if (timeSinceLastRecalculation <= 0f) {
+            recalculatePlanetSpriteSizes(planetInner)
+            timeSinceLastRecalculation = recalculationPeriod
         }
 
         inputCooldown = (inputCooldown - amount).coerceAtLeast(-1f)
@@ -109,19 +127,6 @@ class TrophyPlanetScript : EveryFrameScriptWithCleanup, CampaignInputListener {
             )
         )
 
-        val shipAverageRadius =
-            planetInner.market?.submarketsCopy
-                ?.flatMap { submarket ->
-                    submarket.cargo?.mothballedShips?.membersListCopy?.map { submarket to it } ?: emptyList()
-                }
-                ?.map { (submarket, ship) ->
-                    getOrCalculateCachedSpriteInfo(
-                        submarket,
-                        ship.hullSpec.spriteName
-                    ).radius
-                }
-                ?.average()?.toFloat() ?: 100f
-
         // Personal ships
         if (settingsInner.showStoredShips) {
             val submarket =
@@ -134,12 +139,19 @@ class TrophyPlanetScript : EveryFrameScriptWithCleanup, CampaignInputListener {
                 circlesToShow += mothballedShips.membersListCopy.let { ships ->
                     ships.map { ship ->
                         val cachedSpriteInfo = getOrCalculateCachedSpriteInfo(submarket, ship.hullSpec.spriteName)
-                        val scalingFactor = getScalingFactor(
-                            cachedSpriteInfo.radius,
-                            settingsInner,
-                            shipAverageRadius,
-                            settingsInner.storedSpriteScaleModifier
-                        )
+                        val scalingFactor = mapToNewScale(
+                            sprite = cachedSpriteInfo,
+                            oldScaleMin = minShipRadius,
+                            oldScaleMax = maxShipRadius,
+                            newScaleMin = desiredMinShipRadius,
+                            newScaleMax = desiredMaxShipRadius
+                        ) / cachedSpriteInfo.radius
+//                            getScalingFactor(
+//                            cachedSpriteInfo.radius,
+//                            settingsInner,
+//                            shipAverageRadius,
+//                            settingsInner.storedSpriteScaleModifier
+//                        )
                         val spriteToShow = cachedSpriteInfo.spriteAPI
                             .apply {
                                 this.alphaMult = when {
@@ -162,7 +174,8 @@ class TrophyPlanetScript : EveryFrameScriptWithCleanup, CampaignInputListener {
                                 tooltipMaker = { tooltip, isExpanded ->
                                     if (!isHidden) {
                                         tooltip.addPara("In ${submarket.nameOneLine}", submarket.faction.color, 10f)
-                                    }
+                                        tooltip
+                                    } else null
                                 }
                             ),
                             radius = cachedSpriteInfo.radius,
@@ -188,7 +201,7 @@ class TrophyPlanetScript : EveryFrameScriptWithCleanup, CampaignInputListener {
                     } else return@flatMap emptyList<Pair<SubmarketAPI, FleetMemberAPI>>()
                 } ?: emptyList()
 
-            if (marketShips.count() > 0) {
+            if (marketShips.isNotEmpty()) {
                 circlesToShow += marketShips.let { marketsAndShips ->
                     marketsAndShips.map { (submarket, ship) ->
                         val cachedSpriteInfo = getOrCalculateCachedSpriteInfo(submarket, ship.hullSpec.spriteName)
@@ -204,12 +217,19 @@ class TrophyPlanetScript : EveryFrameScriptWithCleanup, CampaignInputListener {
                                     else -> 1f
                                 }
                             }
-                        val scalingFactor = getScalingFactor(
-                            radius = cachedSpriteInfo.radius,
-                            settings = settingsInner,
-                            averageRadius = shipAverageRadius,
-                            scalingFactor = settingsInner.forSaleSpriteScaleModifier
-                        )
+                        val scalingFactor = mapToNewScale(
+                            sprite = cachedSpriteInfo,
+                            oldScaleMin = minShipRadius,
+                            oldScaleMax = maxShipRadius,
+                            newScaleMin = desiredMinShipRadius,
+                            newScaleMax = desiredMaxShipRadius
+                        ) / cachedSpriteInfo.radius
+//                            getScalingFactor(
+//                            radius = cachedSpriteInfo.radius,
+//                            settings = settingsInner,
+//                            averageRadius = shipAverageRadius,
+//                            scalingFactor = settingsInner.forSaleSpriteScaleModifier
+//                        )
                         EntityData(
                             id = ship.id,
                             customEntityInfo = CustomEntityInfo(
@@ -219,14 +239,70 @@ class TrophyPlanetScript : EveryFrameScriptWithCleanup, CampaignInputListener {
                                 spriteToShow = sprite,
                                 tooltipMaker = { tooltip, isExpanded ->
                                     if (!isHidden) {
+                                        val padding = 10f
+                                        // Vanilla stat datasheet
+                                        // com.fs.starfarer.campaign.ui.trade.OoOO
+
+                                        data class ShipHullMod(
+                                            val spec: HullModSpecAPI,
+                                            val isSMod: Boolean,
+                                            val isDmod: Boolean
+                                        )
+
+                                        val mods = ship.variant.sortedMods
+                                            .distinct()
+                                            .map {
+                                                val spec = Global.getSettings().getHullModSpec(it)
+                                                ShipHullMod(
+                                                    spec,
+                                                    spec.id in ship.variant.sMods,
+                                                    spec.hasTag(Tags.HULLMOD_DMOD)
+                                                )
+                                            }.ifEmpty { null }
+
+                                        if (mods != null) {
+                                            tooltip.addPara(
+                                                buildString {
+                                                    append("Hull mods: ")
+                                                    append(mods.joinToString {
+                                                        when {
+                                                            it.isDmod -> "%s %s"
+                                                            else -> "%s"
+                                                        }
+                                                    })
+                                                    append(".")
+                                                },
+                                                padding,
+                                                mods.flatMap {
+                                                    when {
+                                                        it.isSMod -> Misc.getStoryOptionColor().asList()
+                                                        it.isDmod -> listOf(
+                                                            Misc.getGrayColor(),
+                                                            Misc.getNegativeHighlightColor()
+                                                        )
+                                                        else -> Misc.getTextColor().asList()
+                                                    }
+                                                }
+                                                    .toTypedArray(),
+                                                *mods.flatMap {
+                                                    when {
+                                                        it.isDmod -> listOf(it.spec.displayName, "(D)")
+                                                        else -> it.spec.displayName.asList()
+                                                    }
+                                                }
+                                                    .toTypedArray()
+                                            )
+                                        }
                                         tooltip.addPara(
                                             "Available from the %s for %s credits.",
-                                            10f,
+                                            padding,
                                             arrayOf(submarket.faction.color, Misc.getHighlightColor()),
                                             submarket.nameOneLine,
                                             Misc.getWithDGS(ship.baseBuyValue + (ship.baseBuyValue * submarket.tariff))
                                         )
-                                    }
+
+                                        tooltip
+                                    } else null
                                 }
                             ),
                             radius = cachedSpriteInfo.radius,
@@ -262,6 +338,28 @@ class TrophyPlanetScript : EveryFrameScriptWithCleanup, CampaignInputListener {
             packedCircleManagerInner.desiredTarget = planetInner.location
             packedCircleManagerInner.updatePositions()
         }
+    }
+
+    private fun recalculatePlanetSpriteSizes(planet: SectorEntityToken) {
+        spriteRadii = planet.market?.submarketsCopy
+            ?.flatMap { submarket ->
+                submarket.cargo?.mothballedShips?.membersListCopy?.map { submarket to it } ?: emptyList()
+            }
+            ?.map { (submarket, ship) ->
+                getOrCalculateCachedSpriteInfo(
+                    submarket,
+                    ship.hullSpec.spriteName
+                )
+            }
+            ?.map { it.radius }
+
+        minShipRadius = spriteRadii
+            ?.minOrNull() ?: desiredMinShipRadius
+        maxShipRadius = spriteRadii
+            ?.maxOrNull() ?: desiredMaxShipRadius
+        shipAverageRadius =
+            spriteRadii
+                ?.average()?.toFloat() ?: listOf(desiredMinShipRadius, desiredMaxShipRadius).average().toFloat()
     }
 
     private fun calculateFadeMultiplierBasedOnZoom(
@@ -447,6 +545,21 @@ class TrophyPlanetScript : EveryFrameScriptWithCleanup, CampaignInputListener {
         return (weightedTargetRadius * scalingFactor) / radius
     }
 
+    private fun mapToNewScale(
+        sprite: SpriteInfo,
+        oldScaleMin: Float,
+        oldScaleMax: Float,
+        newScaleMin: Float,
+        newScaleMax: Float
+    ): Float {
+        val oldScaleRange = (oldScaleMax - oldScaleMin)
+        val newScaleRange = (newScaleMax - newScaleMin)
+
+        return (((sprite.radius - oldScaleMin) * newScaleRange / oldScaleRange) + newScaleMin)
+//            .coerceAtMost(sprite.radius)
+        // Don't stretch a sprite bigger than actually is, only downscale large sprites.
+    }
+
     private fun getOrCalculateCachedSpriteInfo(submarket: SubmarketAPI, spriteName: String): SpriteInfo {
         val key = (submarket.spec?.id ?: "") + spriteName
 
@@ -483,6 +596,6 @@ class TrophyPlanetScript : EveryFrameScriptWithCleanup, CampaignInputListener {
         val scalingFactor: Float,
         val displayName: String,
         val factionId: String?,
-        val tooltipMaker: ((tooltip: TooltipMakerAPI, expanded: Boolean) -> Unit)
+        val tooltipMaker: ((tooltip: TooltipMakerAPI, expanded: Boolean) -> TooltipMakerAPI?)
     )
 }

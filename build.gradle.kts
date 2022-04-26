@@ -2,7 +2,7 @@
 // VARIABLES TO CHANGE
 
 object Variables {
-    val starsectorDirectory = "C:/Program Files (x86)/Fractal Softworks/Starsector"
+    val starsectorDirectory = "C:/Program Files (x86)/Fractal Softworks/Starsector1.95.1-RC6"
     val modVersion = "0.0.4-alpha"
     val jarFileName = "Orbital-Parade.jar"
 
@@ -11,7 +11,7 @@ object Variables {
     val author = "Wisp"
     val description =
         "Display ships in your storage and for sale around planets/stations. Configurable in /data/config/modSettings.json."
-    val gameVersion = "0.95a-RC15"
+    val gameVersion = "0.95.1a-RC6"
     val questgiverVersion = "3.1.0"
     val jars = arrayOf("jars/$jarFileName")
     val modPlugin = "org.wisp.trophyplanet.LifecyclePlugin"
@@ -30,7 +30,7 @@ val starsectorCoreDirectory = "${Variables.starsectorDirectory}/starsector-core"
 val starsectorModDirectory = "${Variables.starsectorDirectory}/mods"
 
 plugins {
-    kotlin("jvm") version "1.3.60"
+    kotlin("jvm") version "1.5.31"
     java
 }
 
@@ -42,7 +42,7 @@ repositories {
 }
 
 dependencies {
-    val kotlinVersionInLazyLib = "1.4.21"
+    val kotlinVersionInLazyLib = "1.5.31"
 
     implementation(fileTree("libs") { include("*.jar") })
 

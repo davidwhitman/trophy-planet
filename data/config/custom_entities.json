@@ -11,7 +11,7 @@
     "renderCircleIndicatorSelectionFlash": false,
     "scanIconWithZoom": true,
     "interactable":false,
-    "customDescriptionId":"Trophy_Planet-DummyFleet",
+    "customDescriptionId":"Trophy_Planet-DummyFleet-desc",
     "layers": [BELOW_STATIONS],
     "pluginClass": "org.wisp.trophyplanet.DummyFleetEntity"
   }

@@ -12,7 +12,7 @@ class DummyFleetEntity : BaseCustomEntityPlugin() {
     var spriteAlpha: Float = 1f
 
     @Transient
-    var tooltipMaker: ((tooltip: TooltipMakerAPI, isExpanded: Boolean) -> Unit)? = null
+    var tooltipMaker: ((tooltip: TooltipMakerAPI, isExpanded: Boolean) -> TooltipMakerAPI?)? = null
 
     @Transient
     private var sprites = mutableListOf<SpriteAPI>()
@@ -44,9 +44,9 @@ class DummyFleetEntity : BaseCustomEntityPlugin() {
         }
     }
 
-    override fun hasCustomMapTooltip(): Boolean = tooltipMaker != null
+    override fun hasCustomMapTooltip(): Boolean = true
 
-    override fun isMapTooltipExpandable(): Boolean = true
+    override fun isMapTooltipExpandable(): Boolean = false
 
     override fun createMapTooltip(tooltip: TooltipMakerAPI?, expanded: Boolean) {
         super.createMapTooltip(tooltip, expanded)
