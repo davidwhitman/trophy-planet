@@ -33,7 +33,8 @@ class LifecyclePlugin : BaseModPlugin() {
                         Settings(
                             showStoredShips = settings.tryGetBoolean("showShipsInStorage") { true },
                             showShipsForSale = settings.tryGetBoolean("showShipsForSale") { true },
-                            normalizingAmount = settings.tryGetFloat("normalizingAmount") { 0.8f },
+                            shipMaxSize = settings.tryGetFloat("shipMaxSize") { 150f },
+                            shipMinSize = settings.tryGetFloat("shipMinSize") { 60f },
                             storedSpriteScaleModifier = settings.tryGetFloat("storedSpriteScaleModifier") { 0.5f },
                             forSaleSpriteScaleModifier = settings.tryGetFloat("forSaleSpriteScaleModifier") { 0.8f },
                             alphaMult = settings.tryGetFloat("alphaMult") { 0.2f },
@@ -129,7 +130,8 @@ class LifecyclePlugin : BaseModPlugin() {
     data class Settings(
         val showStoredShips: Boolean,
         val showShipsForSale: Boolean,
-        val normalizingAmount: Float,
+        val shipMaxSize: Float,
+        val shipMinSize: Float,
         val storedSpriteScaleModifier: Float,
         val forSaleSpriteScaleModifier: Float,
         val alphaMult: Float,

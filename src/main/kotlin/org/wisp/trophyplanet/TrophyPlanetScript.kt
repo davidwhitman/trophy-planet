@@ -18,16 +18,18 @@ import com.fs.starfarer.api.loading.HullModSpecAPI
 import com.fs.starfarer.api.ui.HintPanelAPI
 import com.fs.starfarer.api.ui.TooltipMakerAPI
 import com.fs.starfarer.api.util.Misc
+import org.lazywizard.lazylib.ext.logging.w
 import org.lwjgl.util.vector.Vector2f
 import org.wisp.trophyplanet.lib.asList
 import org.wisp.trophyplanet.packedcircle.PackedCircle
 import org.wisp.trophyplanet.packedcircle.PackedCircleManager
 import kotlin.math.hypot
 
-class TrophyPlanetScript : EveryFrameScriptWithCleanup, CampaignInputListener {
+internal class TrophyPlanetScript : EveryFrameScriptWithCleanup, CampaignInputListener {
     companion object {
         const val boundsSize = 2000f
         private const val planetCircleId = "planet"
+        val logger = Global.getLogger(TrophyPlanetScript::class.java)
     }
 
     var market: MarketAPI? = null
@@ -45,11 +47,12 @@ class TrophyPlanetScript : EveryFrameScriptWithCleanup, CampaignInputListener {
     val recalculationPeriod = 5000f
     var timeSinceLastRecalculation = 0f
     var spriteRadii: List<Float>? = emptyList()
-    val desiredMinShipRadius = 60f
-    val desiredMaxShipRadius = 120f
+    var desiredMinShipRadius: Float = 60f
+    var desiredMaxShipRadius: Float = 120f
     var minShipRadius: Float = 0f
     var maxShipRadius: Float = 0f
     var shipAverageRadius: Float = 0f
+    val tooltipPadding = 10f
 
     /**
      * The entities created by this mod that are currently extant.
@@ -94,6 +97,9 @@ class TrophyPlanetScript : EveryFrameScriptWithCleanup, CampaignInputListener {
         if (!settingsInner.showShipsForSale && !settingsInner.showStoredShips) {
             return
         }
+
+        desiredMinShipRadius = settingsInner.shipMinSize
+        desiredMaxShipRadius = settingsInner.shipMaxSize
 
         if (timeSinceLastRecalculation <= 0f) {
             recalculatePlanetSpriteSizes(planetInner)
@@ -146,12 +152,6 @@ class TrophyPlanetScript : EveryFrameScriptWithCleanup, CampaignInputListener {
                             newScaleMin = desiredMinShipRadius,
                             newScaleMax = desiredMaxShipRadius
                         ) / cachedSpriteInfo.radius
-//                            getScalingFactor(
-//                            cachedSpriteInfo.radius,
-//                            settingsInner,
-//                            shipAverageRadius,
-//                            settingsInner.storedSpriteScaleModifier
-//                        )
                         val spriteToShow = cachedSpriteInfo.spriteAPI
                             .apply {
                                 this.alphaMult = when {
@@ -167,13 +167,18 @@ class TrophyPlanetScript : EveryFrameScriptWithCleanup, CampaignInputListener {
                         EntityData(
                             id = ship.id,
                             customEntityInfo = CustomEntityInfo(
-                                displayName = ship.shipName,
+                                displayName = "${ship.shipName}, ${ship.hullSpec.nameWithDesignationWithDashClass}",
                                 factionId = submarket.faction?.id,
                                 scalingFactor = scalingFactor,
                                 spriteToShow = spriteToShow,
                                 tooltipMaker = { tooltip, isExpanded ->
                                     if (!isHidden) {
-                                        tooltip.addPara("In ${submarket.nameOneLine}", submarket.faction.color, 10f)
+                                        addHullmodsToTooltip(ship, tooltip, tooltipPadding)
+                                        tooltip.addPara(
+                                            "In ${submarket.nameOneLine}",
+                                            submarket.faction.color,
+                                            tooltipPadding
+                                        )
                                         tooltip
                                     } else null
                                 }
@@ -224,12 +229,6 @@ class TrophyPlanetScript : EveryFrameScriptWithCleanup, CampaignInputListener {
                             newScaleMin = desiredMinShipRadius,
                             newScaleMax = desiredMaxShipRadius
                         ) / cachedSpriteInfo.radius
-//                            getScalingFactor(
-//                            radius = cachedSpriteInfo.radius,
-//                            settings = settingsInner,
-//                            averageRadius = shipAverageRadius,
-//                            scalingFactor = settingsInner.forSaleSpriteScaleModifier
-//                        )
                         EntityData(
                             id = ship.id,
                             customEntityInfo = CustomEntityInfo(
@@ -239,63 +238,10 @@ class TrophyPlanetScript : EveryFrameScriptWithCleanup, CampaignInputListener {
                                 spriteToShow = sprite,
                                 tooltipMaker = { tooltip, isExpanded ->
                                     if (!isHidden) {
-                                        val padding = 10f
-                                        // Vanilla stat datasheet
-                                        // com.fs.starfarer.campaign.ui.trade.OoOO
-
-                                        data class ShipHullMod(
-                                            val spec: HullModSpecAPI,
-                                            val isSMod: Boolean,
-                                            val isDmod: Boolean
-                                        )
-
-                                        val mods = ship.variant.sortedMods
-                                            .distinct()
-                                            .map {
-                                                val spec = Global.getSettings().getHullModSpec(it)
-                                                ShipHullMod(
-                                                    spec,
-                                                    spec.id in ship.variant.sMods,
-                                                    spec.hasTag(Tags.HULLMOD_DMOD)
-                                                )
-                                            }.ifEmpty { null }
-
-                                        if (mods != null) {
-                                            tooltip.addPara(
-                                                buildString {
-                                                    append("Hull mods: ")
-                                                    append(mods.joinToString {
-                                                        when {
-                                                            it.isDmod -> "%s %s"
-                                                            else -> "%s"
-                                                        }
-                                                    })
-                                                    append(".")
-                                                },
-                                                padding,
-                                                mods.flatMap {
-                                                    when {
-                                                        it.isSMod -> Misc.getStoryOptionColor().asList()
-                                                        it.isDmod -> listOf(
-                                                            Misc.getGrayColor(),
-                                                            Misc.getNegativeHighlightColor()
-                                                        )
-                                                        else -> Misc.getTextColor().asList()
-                                                    }
-                                                }
-                                                    .toTypedArray(),
-                                                *mods.flatMap {
-                                                    when {
-                                                        it.isDmod -> listOf(it.spec.displayName, "(D)")
-                                                        else -> it.spec.displayName.asList()
-                                                    }
-                                                }
-                                                    .toTypedArray()
-                                            )
-                                        }
+                                        addHullmodsToTooltip(ship, tooltip, tooltipPadding)
                                         tooltip.addPara(
                                             "Available from the %s for %s credits.",
-                                            padding,
+                                            tooltipPadding,
                                             arrayOf(submarket.faction.color, Misc.getHighlightColor()),
                                             submarket.nameOneLine,
                                             Misc.getWithDGS(ship.baseBuyValue + (ship.baseBuyValue * submarket.tariff))
@@ -337,6 +283,92 @@ class TrophyPlanetScript : EveryFrameScriptWithCleanup, CampaignInputListener {
             // Keeps desired location synced, since planet will be orbiting and ships should follow it
             packedCircleManagerInner.desiredTarget = planetInner.location
             packedCircleManagerInner.updatePositions()
+        }
+    }
+
+    private data class ShipHullMod(
+        val spec: HullModSpecAPI,
+        val isSMod: Boolean,
+        val isDmod: Boolean
+    )
+
+    private fun addHullmodsToTooltip(
+        ship: FleetMemberAPI,
+        tooltip: TooltipMakerAPI,
+        padding: Float
+    ) {
+        // Vanilla stat datasheet
+        // com.fs.starfarer.campaign.ui.trade.OoOO
+        val arms = ship.variant.fittedWeaponSlots
+            .mapNotNull { slotId ->
+                kotlin.runCatching { ship.variant.getWeaponSpec(slotId) }
+                    .onFailure { logger.w({ "Unable to find weapon id '$slotId'." }, it) }
+                    .getOrNull()
+            }
+            .groupBy { it.weaponName }
+            .mapNotNull { (weaponName, list) ->
+                weaponName to list.count()
+            }
+        val label = "Armaments:  "
+
+        if (arms.any()) {
+            tooltip.addPara(
+                buildString {
+                    append(label)
+                    append(arms.joinToString { "%s %s" })
+                },
+                0f,
+                arms.flatMap { listOf(Misc.getHighlightColor(), Misc.getTextColor()) }
+                    .toTypedArray(),
+                *arms.flatMap { listOf("${it.second}x", it.first) }
+                    .toTypedArray()
+            )
+        } else {
+            tooltip.addPara(label + "None", padding)
+        }
+
+        val mods = ship.variant.sortedMods
+            .distinct()
+            .map {
+                val spec = Global.getSettings().getHullModSpec(it)
+                ShipHullMod(
+                    spec,
+                    spec.id in ship.variant.sMods,
+                    spec.hasTag(Tags.HULLMOD_DMOD)
+                )
+            }.ifEmpty { null }
+
+        if (mods != null) {
+            tooltip.addPara(
+                buildString {
+                    append("Hull mods:    ")
+                    append(mods.joinToString {
+                        when {
+                            it.isDmod -> "%s %s"
+                            else -> "%s"
+                        }
+                    })
+                },
+                4f,
+                mods.flatMap {
+                    when {
+                        it.isSMod -> Misc.getStoryOptionColor().asList()
+                        it.isDmod -> listOf(
+                            Misc.getGrayColor(),
+                            Misc.getNegativeHighlightColor()
+                        )
+                        else -> Misc.getTextColor().asList()
+                    }
+                }
+                    .toTypedArray(),
+                *mods.flatMap {
+                    when {
+                        it.isDmod -> listOf(it.spec.displayName, "(D)")
+                        else -> it.spec.displayName.asList()
+                    }
+                }
+                    .toTypedArray()
+            )
         }
     }
 
@@ -527,22 +559,6 @@ class TrophyPlanetScript : EveryFrameScriptWithCleanup, CampaignInputListener {
         done = true
 
         Global.getSector().removeTransientScript(this)
-    }
-
-
-    private fun getScalingFactor(
-        radius: Float,
-        settings: LifecyclePlugin.Settings,
-        averageRadius: Float,
-        scalingFactor: Float
-    ): Float {
-        val normalizingTargetSize = averageRadius
-        val normalizingAmount = settings.normalizingAmount
-
-        val weightedTargetRadius =
-            (normalizingTargetSize * normalizingAmount) + (radius * (1 - normalizingAmount))
-
-        return (weightedTargetRadius * scalingFactor) / radius
     }
 
     private fun mapToNewScale(

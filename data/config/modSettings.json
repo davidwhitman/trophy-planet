@@ -6,9 +6,10 @@
     "storedSpriteScaleModifier": 1.2,
     # The scale of the sprite for sale, after any normalization.
     "forSaleSpriteScaleModifier": 0.8,
-    # A higher number makes smaller ships larger and larger ships smaller.
-    # 0 for no normalization.
-    "normalizingAmount": 0.80,
+    # The smallest ships will be this size.
+    "shipMinSize": 60,
+    #, The largest ships will be this size.
+    "shipMaxSize": 150,
     # The transparency of the sprites, between 0 and 1.
     "alphaMult": 0.2,
     # Whether or not to fade in on zoom for ships you own.
