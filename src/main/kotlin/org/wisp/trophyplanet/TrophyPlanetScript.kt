@@ -292,84 +292,117 @@ internal class TrophyPlanetScript : EveryFrameScriptWithCleanup, CampaignInputLi
         val isDmod: Boolean
     )
 
+//    Add a new panel, create a new element from said panel, add the param from the first topic in top left,
+//    add the listed elements in top left with calculated size from topic element (there's a tooltipapi method) +
+//    like 5 or 10 so it's not snuggling, add the element to the panel in top left, add the panel to the tooltip
+
+    /**
+     * Adds armaments and hullmods to the provided tooltip.
+     * Not idempotent.
+     * Vanilla stat datasheet
+     * com.fs.starfarer.campaign.ui.trade.OoOO
+     */
     private fun addHullmodsToTooltip(
         ship: FleetMemberAPI,
         tooltip: TooltipMakerAPI,
         padding: Float
     ) {
-        // Vanilla stat datasheet
-        // com.fs.starfarer.campaign.ui.trade.OoOO
-        val arms = ship.variant.fittedWeaponSlots
-            .mapNotNull { slotId ->
-                kotlin.runCatching { ship.variant.getWeaponSpec(slotId) }
-                    .onFailure { logger.w({ "Unable to find weapon id '$slotId'." }, it) }
-                    .getOrNull()
-            }
-            .groupBy { it.weaponName }
-            .mapNotNull { (weaponName, list) ->
-                weaponName to list.count()
-            }
-        val label = "Armaments:  "
+        val panelWidth = 500f
+        val armamentHeight = 40f
+        val hullmodHeight = 40f
+        val panelHeight = armamentHeight + hullmodHeight
+        val labelWidth = 85f
+        val armamentsLabel = "Armaments:"
+        val hullmodLabel = "Hull mods:"
+        val hullmodY = armamentHeight + 10f
 
-        if (arms.any()) {
-            tooltip.addPara(
-                buildString {
-                    append(label)
-                    append(arms.joinToString { "%s %s" })
-                },
-                0f,
-                arms.flatMap { listOf(Misc.getHighlightColor(), Misc.getTextColor()) }
-                    .toTypedArray(),
-                *arms.flatMap { listOf("${it.second}x", it.first) }
-                    .toTypedArray()
-            )
-        } else {
-            tooltip.addPara(label + "None", padding)
-        }
+        Global.getSettings().createCustom(panelWidth, panelHeight, null).apply {
 
-        val mods = ship.variant.sortedMods
-            .distinct()
-            .map {
-                val spec = Global.getSettings().getHullModSpec(it)
-                ShipHullMod(
-                    spec,
-                    spec.id in ship.variant.sMods,
-                    spec.hasTag(Tags.HULLMOD_DMOD)
-                )
-            }.ifEmpty { null }
+            // Armament label
+            createUIElement(labelWidth, armamentHeight, false).apply {
+                this.addPara(armamentsLabel, 0f)
+            }.also { addUIElement(it).inTL(0f, 0f) }
 
-        if (mods != null) {
-            tooltip.addPara(
-                buildString {
-                    append("Hull mods:    ")
-                    append(mods.joinToString {
-                        when {
-                            it.isDmod -> "%s %s"
-                            else -> "%s"
-                        }
-                    })
-                },
-                4f,
-                mods.flatMap {
-                    when {
-                        it.isSMod -> Misc.getStoryOptionColor().asList()
-                        it.isDmod -> listOf(
-                            Misc.getGrayColor(),
-                            Misc.getNegativeHighlightColor()
+            // Armament values
+            createUIElement(panelWidth - labelWidth, armamentHeight, true).apply {
+                val arms = ship.variant.fittedWeaponSlots
+                    .mapNotNull { slotId ->
+                        kotlin.runCatching { ship.variant.getWeaponSpec(slotId) }
+                            .onFailure { logger.w({ "Unable to find weapon id '$slotId'." }, it) }
+                            .getOrNull()
+                    }
+                    .groupBy { it.weaponName }
+                    .mapNotNull { (weaponName, list) ->
+                        weaponName to list.count()
+                    }
+
+                if (arms.any()) {
+                    addPara(
+                        buildString {
+                            append(arms.joinToString { "%s %s" })
+                        },
+                        0f,
+                        arms.flatMap { listOf(Misc.getHighlightColor(), Misc.getTextColor()) }
+                            .toTypedArray(),
+                        *arms.flatMap { listOf("${it.second}x", it.first) }
+                            .toTypedArray()
+                    )
+                } else {
+                    addPara("None", 0f)
+                }
+            }.also { addUIElement(it).inTL(labelWidth, 0f) }
+
+            // Hullmod label
+            createUIElement(labelWidth, hullmodHeight, false).apply {
+                this.addPara(hullmodLabel, 0f)
+            }.also { addUIElement(it).inTL(0f, hullmodY) }
+
+            // Hullmod values
+            createUIElement(panelWidth - labelWidth, hullmodHeight, true).apply {
+                val mods = ship.variant.sortedMods
+                    .distinct()
+                    .map {
+                        val spec = Global.getSettings().getHullModSpec(it)
+                        ShipHullMod(
+                            spec,
+                            spec.id in ship.variant.sMods,
+                            spec.hasTag(Tags.HULLMOD_DMOD)
                         )
-                        else -> Misc.getTextColor().asList()
-                    }
+                    }.ifEmpty { null }
+
+                if (mods != null) {
+                    addPara(
+                        buildString {
+                            append(mods.joinToString {
+                                when {
+                                    it.isDmod -> "%s %s"
+                                    else -> "%s"
+                                }
+                            })
+                        },
+                        0f,
+                        mods.flatMap {
+                            when {
+                                it.isSMod -> Misc.getStoryOptionColor().asList()
+                                it.isDmod -> listOf(
+                                    Misc.getGrayColor(),
+                                    Misc.getNegativeHighlightColor()
+                                )
+                                else -> Misc.getTextColor().asList()
+                            }
+                        }
+                            .toTypedArray(),
+                        *mods.flatMap {
+                            when {
+                                it.isDmod -> listOf(it.spec.displayName, "(D)")
+                                else -> it.spec.displayName.asList()
+                            }
+                        }
+                            .toTypedArray()
+                    )
                 }
-                    .toTypedArray(),
-                *mods.flatMap {
-                    when {
-                        it.isDmod -> listOf(it.spec.displayName, "(D)")
-                        else -> it.spec.displayName.asList()
-                    }
-                }
-                    .toTypedArray()
-            )
-        }
+            }.also { addUIElement(it).inTL(labelWidth, hullmodY) }
+        }.also { tooltip.addCustom(it, 5f) }
     }
 
     private fun recalculatePlanetSpriteSizes(planet: SectorEntityToken) {
