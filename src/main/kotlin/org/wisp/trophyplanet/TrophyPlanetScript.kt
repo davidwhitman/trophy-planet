@@ -173,12 +173,14 @@ internal class TrophyPlanetScript : EveryFrameScriptWithCleanup, CampaignInputLi
                                 spriteToShow = spriteToShow,
                                 tooltipMaker = { tooltip, isExpanded ->
                                     if (!isHidden) {
-                                        addHullmodsToTooltip(ship, tooltip, tooltipPadding)
+                                        addHullmodsToTooltip(ship, tooltip)
+                                        tooltip.addSpacer(tooltipPadding*3)
                                         tooltip.addPara(
                                             "In ${submarket.nameOneLine}",
                                             submarket.faction.color,
                                             tooltipPadding
                                         )
+                                            .position.inBL(tooltipPadding, tooltipPadding)
                                         tooltip
                                     } else null
                                 }
@@ -238,7 +240,8 @@ internal class TrophyPlanetScript : EveryFrameScriptWithCleanup, CampaignInputLi
                                 spriteToShow = sprite,
                                 tooltipMaker = { tooltip, isExpanded ->
                                     if (!isHidden) {
-                                        addHullmodsToTooltip(ship, tooltip, tooltipPadding)
+                                        addHullmodsToTooltip(ship, tooltip)
+                                        tooltip.addSpacer(tooltipPadding*3)
                                         tooltip.addPara(
                                             "Available from the %s for %s credits.",
                                             tooltipPadding,
@@ -246,6 +249,7 @@ internal class TrophyPlanetScript : EveryFrameScriptWithCleanup, CampaignInputLi
                                             submarket.nameOneLine,
                                             Misc.getWithDGS(ship.baseBuyValue + (ship.baseBuyValue * submarket.tariff))
                                         )
+                                            .position.inBL(tooltipPadding, tooltipPadding)
 
                                         tooltip
                                     } else null
@@ -292,9 +296,7 @@ internal class TrophyPlanetScript : EveryFrameScriptWithCleanup, CampaignInputLi
         val isDmod: Boolean
     )
 
-//    Add a new panel, create a new element from said panel, add the param from the first topic in top left,
-//    add the listed elements in top left with calculated size from topic element (there's a tooltipapi method) +
-//    like 5 or 10 so it's not snuggling, add the element to the panel in top left, add the panel to the tooltip
+//    Now wrap both with another panel and element or try setting the panels height so it doesn't create that empty space below
 
     /**
      * Adds armaments and hullmods to the provided tooltip.
@@ -304,27 +306,25 @@ internal class TrophyPlanetScript : EveryFrameScriptWithCleanup, CampaignInputLi
      */
     private fun addHullmodsToTooltip(
         ship: FleetMemberAPI,
-        tooltip: TooltipMakerAPI,
-        padding: Float
+        tooltip: TooltipMakerAPI
     ) {
-        val panelWidth = 500f
-        val armamentHeight = 40f
-        val hullmodHeight = 40f
-        val panelHeight = armamentHeight + hullmodHeight
+        val panelWidth = tooltip.position.width - tooltipPadding * 2
+        val panelInitialHeight = 500f
         val labelWidth = 85f
         val armamentsLabel = "Armaments:"
         val hullmodLabel = "Hull mods:"
-        val hullmodY = armamentHeight + 10f
 
-        Global.getSettings().createCustom(panelWidth, panelHeight, null).apply {
-
+        // Armament panel
+        val armPanel = Global.getSettings().createCustom(panelWidth, panelInitialHeight, null).also { armPanel ->
             // Armament label
-            createUIElement(labelWidth, armamentHeight, false).apply {
+            armPanel.createUIElement(labelWidth, 40f, false).apply {
                 this.addPara(armamentsLabel, 0f)
-            }.also { addUIElement(it).inTL(0f, 0f) }
+            }.also {
+                armPanel.addUIElement(it).inTL(0f, 0f)
+            }
 
             // Armament values
-            createUIElement(panelWidth - labelWidth, armamentHeight, true).apply {
+            armPanel.createUIElement(panelWidth - labelWidth, 40f, false).apply {
                 val arms = ship.variant.fittedWeaponSlots
                     .mapNotNull { slotId ->
                         kotlin.runCatching { ship.variant.getWeaponSpec(slotId) }
@@ -350,15 +350,25 @@ internal class TrophyPlanetScript : EveryFrameScriptWithCleanup, CampaignInputLi
                 } else {
                     addPara("None", 0f)
                 }
-            }.also { addUIElement(it).inTL(labelWidth, 0f) }
+            }.also {
+                armPanel.addUIElement(it).inTL(labelWidth, 0f)
+                armPanel.position.setSize(armPanel.position.width, it.position.height)
+            }
+        }.also { tooltip.addCustom(it, 5f) }
+        market?.starSystem?.createToken()
 
+        // Hullmod panel
+        // Make these separate panels so that the second can be positioned below the first's content.
+        Global.getSettings().createCustom(panelWidth, panelInitialHeight, null).also { hmodPanel ->
             // Hullmod label
-            createUIElement(labelWidth, hullmodHeight, false).apply {
+            hmodPanel.createUIElement(labelWidth, 40f, false).apply {
                 this.addPara(hullmodLabel, 0f)
-            }.also { addUIElement(it).inTL(0f, hullmodY) }
+            }.also {
+                hmodPanel.addUIElement(it).inTL(0f, 0f)
+            }
 
             // Hullmod values
-            createUIElement(panelWidth - labelWidth, hullmodHeight, true).apply {
+            hmodPanel.createUIElement(panelWidth - labelWidth, 40f, false).apply {
                 val mods = ship.variant.sortedMods
                     .distinct()
                     .map {
@@ -401,8 +411,11 @@ internal class TrophyPlanetScript : EveryFrameScriptWithCleanup, CampaignInputLi
                             .toTypedArray()
                     )
                 }
-            }.also { addUIElement(it).inTL(labelWidth, hullmodY) }
-        }.also { tooltip.addCustom(it, 5f) }
+            }.also {
+                hmodPanel.addUIElement(it).inTL(labelWidth, 0f)
+                hmodPanel.position.setSize(hmodPanel.position.width, it.position.height)
+            }
+        }.also { tooltip.addCustom(it, 0f).apply { position.belowLeft(armPanel, 5f) } }
     }
 
     private fun recalculatePlanetSpriteSizes(planet: SectorEntityToken) {
